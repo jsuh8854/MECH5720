@@ -165,6 +165,7 @@ class FrameReader:
         self.lock = threading.Lock()
         self.running = True
         self.connected = False
+        self.restart = False
         self.fps = 0.0
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
@@ -174,6 +175,9 @@ class FrameReader:
         fps_start_time = time.time()
         
         while self.running:
+            if self.restart:
+                self.restart = False
+
             cap = cv2.VideoCapture(self.stream_url)
             if not cap.isOpened():
                 with self.lock:
@@ -185,6 +189,8 @@ class FrameReader:
                 self.connected = True
                 
             while self.running:
+                if self.restart:
+                    break
                 ret, frame = cap.read()
                 if not ret:
                     with self.lock:
@@ -216,6 +222,12 @@ class FrameReader:
     def get_status(self):
         with self.lock:
             return self.connected
+
+    def update_url(self, new_url):
+        with self.lock:
+            self.stream_url = new_url
+            self.restart = True
+        self.connected = False
 
     def stop(self):
         self.running = False
@@ -315,12 +327,20 @@ def upload_texture(texture_id, rgb_frame):
 
 
 def main():
+    # Default connection settings
+    ip = "192.168.1.100"
+    port = 8000
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="192.168.1.100")
-    parser.add_argument("--port", default=8000, type=int)
+    parser.add_argument("--host", default=ip)
+    parser.add_argument("--port", default=port, type=int)
     args = parser.parse_args()
 
-    base_url = f"http://{args.host}:{args.port}"
+    # Update variables from parsed arguments
+    ip = args.host
+    port = args.port
+
+    base_url = f"http://{ip}:{port}"
     
     initial_cfg = None
     try:
@@ -456,6 +476,27 @@ def main():
         imgui.set_next_window_pos((900, 50), imgui.Cond_.first_use_ever)
         
         imgui.begin("Stream Settings")
+
+        imgui.text("Connection Settings")
+        imgui.separator()
+        imgui.spacing()
+
+        changed_ip, new_ip = imgui.input_text("IP Address", ip, flags=imgui.InputTextFlags_.chars_decimal)
+        if changed_ip:
+            ip = new_ip
+        
+        changed_port, new_port = imgui.input_int("Port", port)
+        if changed_port:
+            port = new_port
+        
+        if changed_ip or changed_port:
+            base_url = f"http://{ip}:{port}"
+            reader.update_url(f"{base_url}/video_feed")
+
+        imgui.spacing()
+        imgui.separator()
+        imgui.spacing()
+
         imgui.text("Camera Settings")
         imgui.separator()
         imgui.spacing()
