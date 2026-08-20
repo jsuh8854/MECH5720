@@ -1,3 +1,7 @@
+# ====================
+# utils.py
+# ====================
+
 import numpy as np
 import cv2
 import rawpy
@@ -6,19 +10,18 @@ import sys
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-MAX_PIXEL = 1024
-
-
-def update_working_directory() -> None:
-    abspath = os.path.abspath(__file__)
-    dirname = os.path.dirname(abspath)
-    os.chdir(dirname)
+# Max value of RAW pixels.
+MAX_PIXEL : float = 1024
 
 # Digital gain image to maximise brightness, at the cost of noise being amplified.
-def brighten_image(img: np.ndarray) -> np.ndarray:
+# With gain of -1.0, it automatically scales to maximum brightness.
+def brighten_image(img: np.ndarray, gain: float = -1.0) -> np.ndarray:
     max_brightness : float = np.max(img)
     
-    brightened_image : np.ndarray = img * 1024.0 / max_brightness
+    if gain < 0.0:
+        gain = MAX_PIXEL / max_brightness
+
+    brightened_image : np.ndarray = img * gain
 
     return brightened_image
 
@@ -58,10 +61,14 @@ def read_raw(filename: str) -> np.ndarray:
         print(f"Error loading {filename}: {e}")
         sys.exit(1)
 
+# Convert the float32 rgb data to rgb8 for export.
+def convert_to_rgb8(img: np.ndarray) -> np.ndarray:
+    return np.clip(img * 256.0 / MAX_PIXEL, 0, 255).astype(np.uint8)
 
+# Show the image data in a Matplotlib graph.
 def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> None:
-    # Convert to uint8 format for display
-    rgb8 = np.clip(data / 4.0, 0, 255).astype(np.uint8)
+    # Convert to uint8 format for display.
+    rgb8 = convert_to_rgb8(data)
     # Display using Matplotlib
     plt.figure(figsize=(10, 6))
     plt.imshow(rgb8)
@@ -70,9 +77,10 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
     plt.tight_layout()
     plt.show()
 
+# Output the data as an 8-bit RGB png at the provided path and file name.
 def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
     # Convert 10-bit float data to uint8
-    rgb8 = np.clip(data / 4.0, 0, 255).astype(np.uint8)
+    rgb8 = convert_to_rgb8(data)
 
     output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)

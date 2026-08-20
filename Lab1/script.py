@@ -61,7 +61,7 @@ def create_line_trace(paths: List[str], output_file: str = "gain_line_trace") ->
 
 
 if __name__ == "__main__":
-    utils.update_working_directory()
+    pass
     # 1.2
     # part_1_2_paths = ["./pics/balanced_raw.dng", "./pics/high_gain_raw.dng", "./pics/low_gain_raw.dng", ]
     # batch_debayer(part_1_2_paths) # Generate images
