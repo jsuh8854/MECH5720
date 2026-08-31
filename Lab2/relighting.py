@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import hadamard
 
 import imaging as im
+import utils
 
 # ======================================================================
 # Configuration
@@ -25,7 +26,8 @@ import imaging as im
 # your own capture lives in this block.
 
 # directory holding the image files
-DATA_PATH = "./Lab2/pics"
+# DATA_PATH = "./Lab2/pics"
+DATA_PATH = "./Lab2/data/debayered"
 
 BLACK_LEVEL = 0.0               # sensor black level, normalised (see Lab 1)
 
@@ -279,17 +281,25 @@ fig = im.show_stack(
 im.save_figure(fig, "11_error_images")
 
 
-# TODO 7: find the mean squared error of each estimate against the gold
-#         standard, then the peak signal-to-noise ratio of each, and the
-#         advantage multiplexing gives you. Peak value here is 1.0, since
-#         the images are on [0, 1]. Find PSNR and PSNR advantage in dB.
+# NOTE
+# 7: Find the mean squared error of each estimate against the gold
+#    standard, then the peak signal-to-noise ratio of each, and the
+#    advantage multiplexing gives you. Peak value here is 1.0, since
+#    the images are on [0, 1]. Find PSNR and PSNR advantage in dB.
 
-mse_demux = 1.0  # <-- your code here
-mse_impulse = 1.0  # <-- your code here
+demux_noise = allon_gold_standard - allon_est_demux
+impulse_noise = allon_gold_standard - allon_est_impulse
 
-psnr_demux_db = 0.0  # <-- your code here
-psnr_impulse_db = 0.0  # <-- your code here
-psnr_advantage_db = 0.0  # <-- your code here
+mse_demux = np.mean((demux_noise) ** 2)
+mse_impulse = np.mean((impulse_noise) ** 2)
+
+
+
+psnr_demux_db = 10 * np.log10(1.0 / np.std(demux_noise))
+psnr_impulse_db = 10 * np.log10(1.0 / np.std(impulse_noise))
+psnr_advantage_db = psnr_demux_db - psnr_impulse_db
+
+# print(f"Demux PSNR: {psnr_demux_db} dB, Impulse PSNR: {psnr_impulse_db} dB, PSNR Advantage: {psnr_advantage_db} dB")
 
 
 # ======================================================================

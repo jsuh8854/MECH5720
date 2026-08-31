@@ -69,7 +69,7 @@ def load_image(path, black_level=0.0):
     the black level is a legitimate negative noise excursion, and
     discarding it biases every measurement made downstream.
     """
-    im = np.asarray(Image.open(path))
+    im = np.asarray(Image.open(path))[:,:,:3]
 
     if im.dtype == np.uint8:
         im = im.astype(np.float64) / 255.0
