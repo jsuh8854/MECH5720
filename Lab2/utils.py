@@ -72,6 +72,12 @@ def convert_to_rgb8(img: np.ndarray) -> np.ndarray:
     """Convert the float32 rgb data to rgb8 for export."""
     return np.clip(img * 256.0 / MAX_PIXEL, 0, 255).astype(np.uint8)
 
+def normalise_float_image(img: np.ndarray) -> np.ndarray:
+    """Convert from [0, MAX_PIXEL) to [0, 1]."""
+    return img / (MAX_PIXEL - 1.0)
+
+
+
 def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> None:
     """Show the image data in a Matplotlib graph."""
     # Convert to uint8 format for display.
@@ -85,13 +91,13 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
     plt.show()
 
 def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
-    """Output the data as an 8-bit RGB png at the provided path and file name."""
+    """Output the data as an float RGB png at the provided path and file name."""
     # Convert 10-bit float data to uint8
-    rgb8 = convert_to_rgb8(data)
+    norm = normalise_float_image(data)
 
     output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"{filename}.png"
 
-    plt.imsave(output_file, rgb8)
+    plt.imsave(output_file, norm)

@@ -25,9 +25,9 @@ import imaging as im
 # your own capture lives in this block.
 
 # directory holding the image files
-DATA_PATH = "./Lab2/pics"
+# DATA_PATH = "./Lab2/pics"
 # DATA_PATH = "./Lab2/data_old/debayered"
-# DATA_PATH = "./Lab2/data/debayered"
+DATA_PATH = "./Lab2/data/debayered"
 
 BLACK_LEVEL = 0.0               # sensor black level, normalised (see Lab 1)
 
