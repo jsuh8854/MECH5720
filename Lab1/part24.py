@@ -1,28 +1,35 @@
+"""
+Lab 1 Part 2.4 code
+"""
+
 # ====================
 # Part2.py
 # ====================
+from pathlib import Path
 import numpy as np
 import utils
-from pathlib import Path
 
 # Change to match actual locations
-output_folder = "./generated_debayers/"
+OUTPUT_FOLDER = "./generated_debayers/"
 large_iris_folder : str = "./Part2/2_4/big_iris"
 small_iris_folder : str = "./Part2/2_4/small_iris"
 
 BLACK_LEVEL : float = 16.0
 
-def calculate_mean_brightness(p_images: List[np.ndarray]) -> float:
+def calculate_mean_brightness(p_images: list[np.ndarray]) -> float:
+    """arst"""
     images = np.stack(p_images)
     return np.mean(images) - BLACK_LEVEL
 
-def calculate_mean_noise(p_images: List[np.ndarray]) -> float:
+def calculate_mean_noise(p_images: list[np.ndarray]) -> float:
+    """arst"""
     images = np.stack(p_images)
     noise = np.std(images, axis=0, ddof=1)
     return float(np.mean(noise))
 
-def batch_load_raws(folder: str) -> List[np.ndarray]:
-    raws : List[np.ndarray] = []
+def batch_load_raws(folder: str) -> list[np.ndarray]:
+    """arst"""
+    raws : list[np.ndarray] = []
 
     for file in Path(folder).iterdir():
         if file.is_file():
@@ -31,13 +38,14 @@ def batch_load_raws(folder: str) -> List[np.ndarray]:
     return raws
 
 def save_processed_raw(raw: np.ndarray, filename: str, amplified: bool = False) -> None:
+    """arst"""
     rgb =  utils.debayer_raw(raw)
     rgb_rotated = utils.rotate_image(rgb)
     rgb_balanced = utils.white_balance_rgb(rgb_rotated)
     if amplified:
         rgb_balanced = utils.brighten_image(rgb_balanced)
-    
-    utils.save_image(rgb_balanced, filename, output_folder)
+
+    utils.save_image(rgb_balanced, filename, OUTPUT_FOLDER)
 
 if __name__ == "__main__":
     large_iris_raws = batch_load_raws(large_iris_folder)
@@ -80,6 +88,3 @@ if __name__ == "__main__":
     print("Small iris SNR (dB):", str(small_iris_snr))
     print("--------------------------------")
     print("Change in SNR (dB):", str(snr_delta))
-
-
-

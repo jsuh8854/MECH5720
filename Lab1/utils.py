@@ -1,36 +1,43 @@
-# ====================
-# utils.py
-# ====================
+"""
+General utility functions used for the lab.
+"""
 
+import sys
+from pathlib import Path
 import numpy as np
 import cv2
 import rawpy
-import os
-import sys
 import matplotlib.pyplot as plt
-from pathlib import Path
 
 # Max value of RAW pixels.
 MAX_PIXEL : float = 1024
 
-# Digital gain image to maximise brightness, at the cost of noise being amplified.
-# With gain of -1.0, it automatically scales to maximum brightness.
+def reduce_image(img: np.ndarray, scale: int) -> np.ndarray:
+    """ Digital gain image to maximise brightness, at the cost of noise being amplified.
+        With gain of -1.0, it automatically scales to maximum brightness.
+    """
+    return img[::scale, ::scale]
+
+
 def brighten_image(img: np.ndarray, gain: float = -1.0) -> np.ndarray:
-    max_brightness : float = np.max(img)
-    
+    """ Digital gain image to maximise brightness, at the cost of noise being amplified.
+        With gain of -1.0, it automatically scales to maximum brightness.
+    """
+    max_brightness: float = np.max(img)
+
     if gain < 0.0:
         gain = MAX_PIXEL / max_brightness
 
-    brightened_image : np.ndarray = img * gain
+    brightened_image: np.ndarray = img * gain
 
     return brightened_image
 
-# Rotate the image, default value of -1 rotates to match lab setup.
 def rotate_image(img: np.ndarray, k: int = -1) -> np.ndarray:
+    """Rotate the image, default value of -1 rotates to match lab setup."""
     return np.rot90(img, k=k)
 
-# Returns a Minkowski white balanced image.
 def white_balance_rgb(rgb: np.ndarray, p: float = 4.0) -> np.ndarray:
+    """Returns a Minkowski white balanced image."""
     # Estimate illuminant strength for each channel.
     norms = np.mean(np.abs(rgb) ** p, axis=(0, 1)) ** (1.0 / p)
 
@@ -41,32 +48,32 @@ def white_balance_rgb(rgb: np.ndarray, p: float = 4.0) -> np.ndarray:
 
     return balanced
 
-# Convert the raw DNG into an float32 debayered RGB image, needs white balance.
 def debayer_raw(raw: np.ndarray) -> np.ndarray:
+    """Convert the raw DNG into an float32 debayered RGB image, needs white balance."""
     raw = np.asarray(raw, dtype=np.uint16, order="C")
 
-    rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB)
+    rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB) # pylint: disable=no-member
     rgb = rgb16.astype(np.float32)
 
     return rgb
 
-# Reads the DNG file and returns as an np.ndarray.
 def read_raw(filename: str) -> np.ndarray:
+    """Reads the DNG file and returns as an np.ndarray."""
     try:
         # Load and view the raw bayer image
         with rawpy.imread(filename) as raw:
             return np.array(raw.raw_image, dtype=np.uint16, copy=True, order="C")
 
-    except Exception as e:
+    except FileNotFoundError as e:
         print(f"Error loading {filename}: {e}")
         sys.exit(1)
 
-# Convert the float32 rgb data to rgb8 for export.
 def convert_to_rgb8(img: np.ndarray) -> np.ndarray:
+    """Convert the float32 rgb data to rgb8 for export."""
     return np.clip(img * 256.0 / MAX_PIXEL, 0, 255).astype(np.uint8)
 
-# Show the image data in a Matplotlib graph.
 def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> None:
+    """Show the image data in a Matplotlib graph."""
     # Convert to uint8 format for display.
     rgb8 = convert_to_rgb8(data)
     # Display using Matplotlib
@@ -77,8 +84,8 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
     plt.tight_layout()
     plt.show()
 
-# Output the data as an 8-bit RGB png at the provided path and file name.
 def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
+    """Output the data as an 8-bit RGB png at the provided path and file name."""
     # Convert 10-bit float data to uint8
     rgb8 = convert_to_rgb8(data)
 

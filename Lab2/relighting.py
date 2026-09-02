@@ -9,7 +9,6 @@ Run this by stepping through it in your debugger rather than executing
 it end to end. Set a breakpoint at the first section and step forward,
 watching each figure as it appears. Every step you complete should
 produce a visible change in the figures.
-
 """
 
 import numpy as np
@@ -17,7 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import hadamard
 
 import imaging as im
-import utils
+# import utils
 
 # ======================================================================
 # Configuration
@@ -26,8 +25,9 @@ import utils
 # your own capture lives in this block.
 
 # directory holding the image files
-# DATA_PATH = "./Lab2/pics"
-DATA_PATH = "./Lab2/data/debayered"
+DATA_PATH = "./Lab2/pics"
+# DATA_PATH = "./Lab2/data_old/debayered"
+# DATA_PATH = "./Lab2/data/debayered"
 
 BLACK_LEVEL = 0.0               # sensor black level, normalised (see Lab 1)
 
@@ -59,8 +59,7 @@ H = (1 - H) / 2
 fig = im.show(H[:, :, None], "Multiplexing matrix H", gamma=1.0, fignum=1)
 im.save_figure(fig, "01_multiplexing_matrix")
 
-print("Each multiplexed frame has %d of %d sites on."
-      % (H[0].sum(), N_SITES))
+print(f"Each multiplexed frame has {(H[0].sum(), N_SITES)} of {(H[0].sum(), N_SITES)} sites on.")
 
 
 # ======================================================================
@@ -95,8 +94,12 @@ ambient = np.mean(ambient_stack, axis=0)
 
 
 
-fig = im.show(ambient, "Ambient, averaged over %d frames" % N_AMBIENT,
-              GAMMA_DISPLAY, fignum=4)
+fig = im.show(
+    ambient,
+    f"Ambient, averaged over {N_AMBIENT} frames",
+    GAMMA_DISPLAY,
+    fignum=4
+)
 im.save_figure(fig, "03_ambient_averaged")
 
 
@@ -171,8 +174,7 @@ all_on_weights = np.ones(demux.shape[0])
 
 allon_est_demux = ambient + np.sum(demux * all_on_weights[:, None, None, None], axis=0)
 
-fig = im.show(allon_est_demux, "Synthesised: all sites on",
-              GAMMA_DISPLAY, fignum=8)
+fig = im.show(allon_est_demux, "Synthesised: all sites on", GAMMA_DISPLAY, fignum=8)
 im.save_figure(fig, "06_synth_allon")
 
 # NOTE QUESTION
@@ -184,7 +186,7 @@ im.save_figure(fig, "06_synth_allon")
 
 # NOTE: Change to be correct for new data
 checkerboard_weights = np.array([
-    1, 0, 1, 0, 
+    1, 0, 1, 0,
     0, 1, 0, 1,
     1, 0, 1, 0,
     0, 1, 0
@@ -192,8 +194,7 @@ checkerboard_weights = np.array([
 
 relit = ambient + np.sum(demux * checkerboard_weights[:, None, None, None], axis=0)
 
-fig = im.show(relit, "Synthesised: checkerboard illumination",
-              GAMMA_DISPLAY, fignum=9)
+fig = im.show(relit, "Synthesised: checkerboard illumination", GAMMA_DISPLAY, fignum=9)
 im.save_figure(fig, "07_synth_checkerboard")
 
 # --- Free experimentation -------------------------------------------
@@ -201,10 +202,10 @@ im.save_figure(fig, "07_synth_checkerboard")
 # per colour channel; scaling the ambient down to make the relighting
 # more dramatic.
 
-ambient_factor = 0.02
+AMBIENT_FACTOR = 0.02
 creative = np.zeros_like(demux[0])
-stamp_strength = 1
-gradient_strength = 0.75
+STAMP_STRENGTH = 1
+GRADIENT_STRENGTH = 0.75
 
 stamp = [
     [0, 0, 0,   1],
@@ -213,21 +214,21 @@ stamp = [
     [0, 1, 0,   0],
 ]
 
-for col in range(4):
-    for row in range(4):
-        if row == 3 and col == 3:
+for col_i in range(4):
+    for row_i in range(4):
+        if row_i == 3 and col_i == 3:
             continue
 
-        red_weight =   gradient_strength * (1.0 - row / 3.0)
-        green_weight = stamp_strength * stamp[row][col]
-        blue_weight =  gradient_strength * (1.0 - col / 3.0)
+        red_weight =   GRADIENT_STRENGTH * (1.0 - row_i / 3.0)
+        green_weight = STAMP_STRENGTH * stamp[row_i][col_i]
+        blue_weight =  GRADIENT_STRENGTH * (1.0 - col_i / 3.0)
 
-        creative[:, :, 0] += demux[row + col*4, :, :, 0] * red_weight
-        creative[:, :, 1] += demux[row + col*4, :, :, 1] * green_weight
-        creative[:, :, 2] += demux[row + col*4, :, :, 2] * blue_weight
+        creative[:, :, 0] += demux[row_i + col_i*4, :, :, 0] * red_weight
+        creative[:, :, 1] += demux[row_i + col_i*4, :, :, 1] * green_weight
+        creative[:, :, 2] += demux[row_i + col_i*4, :, :, 2] * blue_weight
 
 
-creative += ambient * ambient_factor
+creative += ambient * AMBIENT_FACTOR
 
 fig = im.show(creative, "Creative relighting", GAMMA_DISPLAY, fignum=10)
 im.save_figure(fig, "08_creative")
@@ -254,7 +255,7 @@ allon_gold_standard = im.load_stack(DATA_PATH, "AllOn", N_ALLON, BLACK_LEVEL).me
 
 # NOTE QUESTION
 # 6: Estimate the all-on image from the impulse frames.
-#    Think carefully about the ambient. 
+#    Think carefully about the ambient.
 
 allon_est_impulse = ambient - ambient * N_SITES + np.sum(impulse, axis=0)
 
@@ -293,13 +294,9 @@ impulse_noise = allon_gold_standard - allon_est_impulse
 mse_demux = np.mean((demux_noise) ** 2)
 mse_impulse = np.mean((impulse_noise) ** 2)
 
-
-
 psnr_demux_db = 10 * np.log10(1.0 / np.std(demux_noise))
 psnr_impulse_db = 10 * np.log10(1.0 / np.std(impulse_noise))
 psnr_advantage_db = psnr_demux_db - psnr_impulse_db
-
-# print(f"Demux PSNR: {psnr_demux_db} dB, Impulse PSNR: {psnr_impulse_db} dB, PSNR Advantage: {psnr_advantage_db} dB")
 
 
 # ======================================================================
@@ -313,11 +310,12 @@ psnr_advantage_db = psnr_demux_db - psnr_impulse_db
 first_gold_standard = im.load_stack(DATA_PATH, "FirstOn", N_FIRSTON,
                                     BLACK_LEVEL).mean(axis=0)
 
-# TODO 8: estimate the site-1 image by each method. The impulse method
-#         measured it directly, in one frame. For the demultiplexed
-#         estimate don't forget the impact of ambient light.
+# NOTE
+# 8: Estimate the site-1 image by each method. The impulse method
+#    measured it directly, in one frame. For the demultiplexed
+#    estimate don't forget the impact of ambient light.
 first_est_impulse = impulse[0]
-first_est_demux = ambient  # <-- your code here
+first_est_demux = ambient + demux[0]
 
 fig = im.show_stack(
     im.side_by_side(first_gold_standard, first_est_impulse,
@@ -327,41 +325,48 @@ fig = im.show_stack(
     GAMMA_DISPLAY, fignum=103)
 im.save_figure(fig, "12_single_site_three_way")
 
-mse_first_impulse = 1.0  # <-- your code here
-mse_first_demux = 1.0  # <-- your code here
+demux_first_noise = first_gold_standard - first_est_demux
+impulse_first_noise = first_gold_standard - first_est_impulse
 
-psnr_first_impulse_db = 0.0  # <-- your code here
-psnr_first_demux_db = 0.0  # <-- your code here
-psnr_first_advantage_db = 0.0  # <-- your code here
+mse_first_demux = np.mean((demux_first_noise) ** 2)
+mse_first_impulse = np.mean((impulse_first_noise) ** 2)
+
+psnr_first_demux_db = 10 * np.log10(1.0 / np.std(demux_first_noise))
+psnr_first_impulse_db = 10 * np.log10(1.0 / np.std(impulse_first_noise))
+psnr_first_advantage_db = psnr_first_demux_db - psnr_first_impulse_db
 
 
 # ======================================================================
 # 10. Report these numbers
 # ======================================================================
 def row(label, value, unit=""):
-    print(("  %-32s %s %s" % (label, value, unit)).rstrip())
+    """durr"""
+    print(f"  {label:<32} {value} {unit}".rstrip())
 
 print("")
 print("=" * 58)
-row("ambient mean level", "%.5f" % ambient.mean())
-row("ambient std dev", "%.5f" % ambient_stack.std(axis=0).mean())
+row("ambient mean level", f"{ambient.mean():.5f}")
+row("ambient std dev", f"{ambient_stack.std(axis=0).mean():.5f}")
 print("-" * 58)
 row("ALL-ON IMAGE", "")
-row("  MSE, impulse estimate", "%.3e" % mse_impulse)
-row("  MSE, demultiplexed estimate", "%.3e" % mse_demux)
-row("  PSNR, impulse estimate", "%.3f" % psnr_impulse_db, "dB")
-row("  PSNR, demultiplexed estimate", "%.3f" % psnr_demux_db, "dB")
-row("  PSNR ADVANTAGE", "%.3f" % psnr_advantage_db, "dB")
+row("  MSE, impulse estimate", f"{mse_impulse:.3e}")
+row("  MSE, demultiplexed estimate", f"{mse_demux:.3e}")
+row("  PSNR, impulse estimate", f"{psnr_impulse_db:.3f}", "dB")
+row("  PSNR, demultiplexed estimate", f"{psnr_demux_db:.3f}", "dB")
+row("  PSNR ADVANTAGE", f"{psnr_advantage_db:.3f}", "dB")
 print("-" * 58)
 row("SINGLE-SITE IMAGE (site 1)", "")
-row("  PSNR, impulse estimate", "%.3f" % psnr_first_impulse_db, "dB")
-row("  PSNR, demultiplexed estimate", "%.3f" % psnr_first_demux_db, "dB")
-row("  PSNR ADVANTAGE", "%.3f" % psnr_first_advantage_db, "dB")
+row("  PSNR, impulse estimate", f"{psnr_first_impulse_db:.3f}", "dB")
+row("  PSNR, demultiplexed estimate", f"{psnr_first_demux_db:.3f}", "dB")
+row("  PSNR ADVANTAGE", f"{psnr_first_advantage_db:.3f}", "dB")
 print("=" * 58)
 print("")
 
 
+# ======================================================================
 # Cleanup / close
+# ======================================================================
+
 plt.show(block=False)
 plt.pause(0.2)          # let every figure draw before we block
 try:
