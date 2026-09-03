@@ -1,0 +1,3 @@
+Cap1
+Exp time - 30000
+Ana gain - 90
