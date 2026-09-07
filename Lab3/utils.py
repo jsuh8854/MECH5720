@@ -10,7 +10,7 @@ import rawpy
 import matplotlib.pyplot as plt
 
 # Max value of RAW pixels.
-MAX_PIXEL : float = 1024
+MAX_PIXEL : float = 1023
 
 def reduce_image(img: np.ndarray, scale: int) -> np.ndarray:
     """ Digital gain image to maximise brightness, at the cost of noise being amplified.
@@ -61,7 +61,7 @@ def read_raw(filename: str) -> np.ndarray:
     try:
         # Load and view the raw bayer image
         with rawpy.imread(filename) as raw:
-            return np.array(raw.raw_image, dtype=np.uint16, copy=True, order="C")
+            return np.array(raw.raw_image, dtype=np.int16, copy=True, order="C")
 
     except FileNotFoundError as e:
         print(f"Error loading {filename}: {e}")
@@ -69,12 +69,11 @@ def read_raw(filename: str) -> np.ndarray:
 
 def convert_to_rgb8(img: np.ndarray) -> np.ndarray:
     """Convert the float32 rgb data to rgb8 for export."""
-    return np.clip(img * 256.0 / MAX_PIXEL, 0, 255).astype(np.uint8)
+    return np.clip(img * 256.0 / (MAX_PIXEL + 1), 0, 255).astype(np.uint8)
 
 def normalise_float_image(img: np.ndarray) -> np.ndarray:
-    """Convert from [0, MAX_PIXEL) to [0, 1]."""
-    return img / (MAX_PIXEL - 1.0)
-
+    """Convert from [0, MAX_PIXEL] to [0, 1]."""
+    return img / MAX_PIXEL
 
 def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> None:
     """Show the image data in a Matplotlib graph."""
@@ -90,7 +89,6 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
 
 def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
     """Output the data as an float RGB png at the provided path and file name."""
-    # Convert 10-bit float data to uint8
     norm = normalise_float_image(data)
 
     output_dir = Path(output_path)
