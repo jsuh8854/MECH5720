@@ -15,7 +15,7 @@ BLACK_LEVEL: int = 16
 IMG_DIR: str = "Lab3_cap"
 """Directory containing the images. Image names should be in the format 1.dng, 2.dng, etc."""
 
-IMG_COUNT: int = 13
+IMG_COUNT: int = 16
 """Number of images in IMG_DIR to average."""
 
 SAVE_NAME: str = "fixed_pattern.pkl"
@@ -49,10 +49,10 @@ if __name__ == "__main__":
         f"Min: {min_val}, Max: {max_val}, Ave: {ave_val}"
     )
 
-    plt.imshow(fixed_pattern, cmap="viridis", vmin=min_val, vmax=max_val)
-    plt.axis("off")
-    plt.show()
-
     # Save as pickle
     with open(SAVE_NAME, "wb") as f:
         pickle.dump(fixed_pattern, f)
+        
+    plt.imshow(fixed_pattern, cmap="viridis", vmin=min_val, vmax=max_val)
+    plt.axis("off")
+    plt.show()

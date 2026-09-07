@@ -2,6 +2,7 @@
 General utility functions used for the lab.
 """
 
+import pickle
 import sys
 from pathlib import Path
 import numpy as np
@@ -9,8 +10,34 @@ import cv2
 import rawpy
 import matplotlib.pyplot as plt
 
-# Max value of RAW pixels.
+
 MAX_PIXEL : float = 1023
+"""Max value of RAW pixels."""
+
+BLACK_LEVEL: int = 16
+"""Black level of sensor."""
+
+FIXED_PATTERN_PICKLE_PATH: str = "fixed_pattern.pkl"
+"""Path to pickle file with fixed pattern noise"""
+
+fixed_pattern: np.ndarray
+"""Fixed pattern of sensor."""
+
+# Load pickle
+try:
+    with open(FIXED_PATTERN_PICKLE_PATH, "rb") as f:
+        fixed_pattern = pickle.load(f)
+except FileNotFoundError:
+    print("Warning: Fixed pattern pickle not found.")
+
+
+def remove_black_level(img: np.ndarray) -> np.ndarray:
+    """Removes the black level from the image."""
+    return img - BLACK_LEVEL
+
+def remove_fixed_pattern(img: np.ndarray) -> np.ndarray:
+    """Removes the black level from the image."""
+    return img - fixed_pattern
 
 def reduce_image(img: np.ndarray, scale: int) -> np.ndarray:
     """ Digital gain image to maximise brightness, at the cost of noise being amplified.
