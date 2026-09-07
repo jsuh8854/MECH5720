@@ -30,15 +30,17 @@ if __name__ == "__main__":
 
     for i in range(IMG_COUNT):
         img_path: str = f"{IMG_DIR}/{i+1:02d}.dng"
-        raw_images.append( utils.read_raw(img_path) - BLACK_LEVEL )
-    
+        raw_image_list.append( utils.read_raw(img_path) - BLACK_LEVEL )
+
     raw_images = np.stack(raw_image_list)
 
     # Calculate average as fixed-pattern noise
-    fixed_pattern = np.mean(raw_Images, axis=0)
+    fixed_pattern = np.mean(raw_images, axis=0)
 
     # Sanity check prints
-    print(f"Min: {np.min(fixed_pattern)}, Max: {np.max(fixed_pattern)}, Ave: {np.mean(fixed_pattern)}")
+    print(
+        f"Min: {np.min(fixed_pattern)}, Max: {np.max(fixed_pattern)}, Ave: {np.mean(fixed_pattern)}"
+    )
 
     # Save as pickle
     pickle.dump(fixed_pattern, SAVE_NAME)
