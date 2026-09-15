@@ -36,8 +36,8 @@ if __name__ == "__main__":
 
     raw_images = np.stack(raw_image_list)
 
-    # Calculate average as fixed-pattern noise
-    fixed_pattern = np.mean(raw_images, axis=0)
+    # Calculate average as fixed-pattern noise, clipping bottom values
+    fixed_pattern = np.clip(np.mean(raw_images, axis=0), 0, utils.MAX_PIXEL)
 
     # Sanity checks
     min_val: float = np.min(fixed_pattern)
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # Save as pickle
     with open(SAVE_NAME, "wb") as f:
         pickle.dump(fixed_pattern, f)
-        
-    plt.imshow(fixed_pattern, cmap="viridis", vmin=min_val, vmax=max_val)
+
+    plt.imshow(fixed_pattern, cmap="viridis", vmin=min_val, vmax=ave_val*2)
     plt.axis("off")
     plt.show()
