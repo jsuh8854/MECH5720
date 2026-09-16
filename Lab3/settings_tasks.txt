@@ -1,0 +1,15 @@
+set exp to 64000 to focus
+pos 3, 4, 5 with light (part 2) (1000mus exp)
+each corner random pos (not 1m)
+set exp 64000 and furthest dist cap (part 3 - mtf)
+pos 3, 4, 5 natural image scene capture + random pos cap 10 frames (64000mus exp)
+
+select nayar or levin (part 9)
+set focus to in front of closest marking
+cap psf at each distance marking (light in centre)
+cap own scene - 2 object 2 different depths
+
+BONUS (angled aperture)
+focus to central pt
+cap psf at furthest depth
+cap nat image at furthest depth
