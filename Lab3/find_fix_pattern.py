@@ -21,6 +21,9 @@ IMG_COUNT: int = 16
 SAVE_NAME: str = "fixed_pattern.pkl"
 """File to save pickle as."""
 
+CROP_SIZE: int = 64
+"""Size of crop to use of the fixed pattern noise."""
+
 if __name__ == "__main__":
     # Variable to dump
     fixed_pattern: np.ndarray
@@ -53,6 +56,18 @@ if __name__ == "__main__":
     with open(SAVE_NAME, "wb") as f:
         pickle.dump(fixed_pattern, f)
 
-    plt.imshow(fixed_pattern, cmap="viridis", vmin=min_val, vmax=ave_val*2)
+    # Find brightest spot and crop around it to show most interesting
+    max_y, max_x = np.unravel_index( np.argmax(fixed_pattern), fixed_pattern.shape ) # pylint: disable=unbalanced-tuple-unpacking
+
+    y_start: int = max_y - CROP_SIZE // 2
+    x_start: int = max_x - CROP_SIZE // 2
+    y_end: int = max_y + CROP_SIZE // 2
+    x_end: int = max_x + CROP_SIZE // 2
+
+    crop: np.ndarray = fixed_pattern[y_start:y_end, x_start:x_end]
+
+    plt.imshow(crop, cmap="viridis")
     plt.axis("off")
     plt.show()
+
+    utils.save_image(crop, "fixed_pattern", "p0_fixed_pattern")

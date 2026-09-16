@@ -140,7 +140,7 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
     plt.tight_layout()
     plt.show()
 
-def save_image(data: np.ndarray, filename: str, output_path: str, greyscale: bool = False) -> None:
+def save_image(data: np.ndarray, filename: str, output_path: str, cmap: str = None) -> None:
     """Output the data as an float RGB png at the provided path and file name."""
     norm = normalise_float_image(data)
 
@@ -149,7 +149,7 @@ def save_image(data: np.ndarray, filename: str, output_path: str, greyscale: boo
 
     output_file = output_dir / f"{filename}.png"
 
-    if greyscale:
-        plt.imsave(output_file, norm, cmap="gray")
+    if cmap:
+        plt.imsave(output_file, norm, cmap=cmap)
     else:
         plt.imsave(output_file, norm)

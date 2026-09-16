@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from scipy.linalg import hadamard
 
 import imaging as im
-# import utils
+import utils
 
 # ======================================================================
 # Configuration
@@ -24,20 +24,50 @@ import imaging as im
 # Everything you need to change to switch between the provided data and
 # your own capture lives in this block.
 
-# directory holding the image files
-# DATA_PATH = "./Lab2/pics"
-# DATA_PATH = "./Lab2/data_old/debayered"
-DATA_PATH = "./Lab2/data/debayered"
+# Pick which scene to use
+IS_EXAMPLE = False
+"""Using provided scene"""
+IS_BONUS = True
+"""Using bonus scene"""
+IS_INPUT_RAW = False
+"""Using raw dngs or pre-debayered pngs"""
 
-BLACK_LEVEL = 0.0               # sensor black level, normalised (see Lab 1)
+EXAMPLE_PATH = "./Lab2/pics"
+"""Path to example pngs."""
+BONUS_PATH = "./Lab2/data/bonus"
+"""Path to bonus pngs."""
+OWN_DEBAYERED_PATH = "./Lab2/data/debayered"
+"""Path to own scene pngs."""
+OWN_RAW_PATH = "./Lab2/data/debayered"
+"""Path to own scene dngs. Only used for own scene."""
 
-N_SITES = 15                    # illumination sites == multiplexed frames
-N_AMBIENT = 16                  # frames with all sites off
-N_ALLON = 16                    # frames with all sites on
-N_FIRSTON = 16                  # frames with only site 1 on
+DATA_PATH = EXAMPLE_PATH if IS_EXAMPLE else (
+            BONUS_PATH if IS_BONUS else(
+            OWN_RAW_PATH if IS_INPUT_RAW else OWN_DEBAYERED_PATH
+))
+"""Directory holding the image files.
 
-GAMMA_DISPLAY = 2.0             # display only; never applied to the data
-GAMMA_ERROR = 3.3               # stronger gamma, to see small error values
+If IS_EXAMPLE is True, it should use the example pngs.
+Otherwise, if IS_INPUT_RAW is False, it should use our own debayered pngs.
+Else, use the raw dngs outputed by the camera and only debayer relevant images.
+"""
+
+BLACK_LEVEL = 16
+"""Sensor black level"""
+
+N_SITES = 3 if IS_BONUS else 15
+"""Illumination sites == multiplexed frames"""
+N_AMBIENT = 1 if IS_BONUS else 16
+"""Frames with all sites off"""
+N_ALLON = 1 if IS_BONUS else 16
+"""Frames with all sites on"""
+N_FIRSTON = 1 if IS_BONUS else 16
+"""Frames with only site 1 on"""
+
+GAMMA_DISPLAY = 2.0
+"""Display only; never applied to the data"""
+GAMMA_ERROR = 3.3
+"""Stronger gamma, to see small error values"""
 
 plt.ion()                       # figures update as the script runs
 
@@ -66,7 +96,11 @@ print(f"Each multiplexed frame has {(H[0].sum(), N_SITES)} of {(H[0].sum(), N_SI
 # 2. Load and inspect the multiplexed frames
 # ======================================================================
 
-mux = im.load_stack(DATA_PATH, "Multiplexed", N_SITES, BLACK_LEVEL)
+mux: np.ndarray
+if IS_INPUT_RAW:
+    mux = utils.load_raw_stack(DATA_PATH, "Multiplexed", N_SITES, BLACK_LEVEL)
+else:
+    mux = im.load_stack(DATA_PATH, "Multiplexed", N_SITES, BLACK_LEVEL / utils.MAX_PIXEL)
 print("Multiplexed stack:", mux.shape)
 
 fig = im.show_stack(mux, "Multiplexed input frames", GAMMA_DISPLAY, fignum=2)
@@ -81,18 +115,19 @@ im.save_figure(fig, "02_multiplexed_input")
 # A single ambient frame is as noisy as any other frame; averaging the
 # stack gives a much lower-noise estimate.
 
-ambient_stack = im.load_stack(DATA_PATH, "Ambient", N_AMBIENT, BLACK_LEVEL)
+ambient_stack: np.ndarray
+if IS_INPUT_RAW:
+    ambient_stack = utils.load_raw_stack(DATA_PATH, "Ambient", N_AMBIENT, BLACK_LEVEL)
+else:
+    ambient_stack = im.load_stack(
+        DATA_PATH, "Ambient", N_AMBIENT, BLACK_LEVEL / utils.MAX_PIXEL
+)
 
-# Not necessary anymore
-# fig = im.show(ambient_stack[0], "Ambient, single frame",
-#               GAMMA_DISPLAY, fignum=3)
 
 # NOTE QUESTION
 # 1: Average the ambient frames to get a low-noise ambient estimate.
 #    Result should have shape (H, W, C), i.e. one image, not a stack.
 ambient = np.mean(ambient_stack, axis=0)
-
-
 
 fig = im.show(
     ambient,
@@ -172,7 +207,12 @@ fig = im.show_stack(demux + ambient,
 
 all_on_weights = np.ones(demux.shape[0])
 
-allon_est_demux = ambient + np.sum(demux * all_on_weights[:, None, None, None], axis=0)
+allon_est_demux: np.ndarray
+
+if IS_INPUT_RAW:
+    allon_est_demux = ambient + np.sum(demux * all_on_weights[:, None, None], axis=0)
+else:
+    allon_est_demux = ambient + np.sum(demux * all_on_weights[:, None, None, None], axis=0)
 
 fig = im.show(allon_est_demux, "Synthesised: all sites on", GAMMA_DISPLAY, fignum=8)
 im.save_figure(fig, "06_synth_allon")
@@ -185,14 +225,27 @@ im.save_figure(fig, "06_synth_allon")
 #    dataset you are using before you pick them.
 
 # NOTE: Change to be correct for new data
-checkerboard_weights = np.array([
-    1, 0, 1, 0,
-    0, 1, 0, 1,
-    1, 0, 1, 0,
-    0, 1, 0
-])
+checkerboard_weights: np.ndarray
 
-relit = ambient + np.sum(demux * checkerboard_weights[:, None, None, None], axis=0)
+if IS_BONUS:
+    checkerboard_weights = np.array([0, 1, 0])
+else:
+    checkerboard_weights = np.array([
+        1, 0, 1, 0,
+        0, 1, 0, 1,
+        1, 0, 1, 0,
+        0, 1, 0
+    ])
+
+relit: np.ndarray
+
+if IS_INPUT_RAW:
+    relit = ambient + np.sum(demux * checkerboard_weights[:, None, None], axis=0)
+    relit = utils.debayer_raw(relit)
+    relit = utils.normalise_float_image(relit)
+    relit = utils.rotate_image(relit)
+else:
+    relit = ambient + np.sum(demux * checkerboard_weights[:, None, None, None], axis=0)
 
 fig = im.show(relit, "Synthesised: checkerboard illumination", GAMMA_DISPLAY, fignum=9)
 im.save_figure(fig, "07_synth_checkerboard")
@@ -201,38 +254,72 @@ im.save_figure(fig, "07_synth_checkerboard")
 # Try: several sites at once to accentuate shadows; different weights
 # per colour channel; scaling the ambient down to make the relighting
 # more dramatic.
+# Also doubles as bonus
 
-AMBIENT_FACTOR = 0.02
-creative = np.zeros_like(demux[0])
-STAMP_STRENGTH = 1
-GRADIENT_STRENGTH = 0.75
+if not IS_INPUT_RAW and not IS_BONUS:
 
-stamp = [
-    [0, 0, 0,   1],
-    [0, 0, 0.5, 0],
-    [1, 0, 0.5, 0],
-    [0, 1, 0,   0],
-]
+    AMBIENT_FACTOR = 0.02
+    creative = np.zeros_like(demux[0])
+    STAMP_STRENGTH = 1
+    GRADIENT_STRENGTH = 0.75
 
-for col_i in range(4):
-    for row_i in range(4):
-        if row_i == 3 and col_i == 3:
-            continue
+    stamp = [
+        [0, 0, 0,   1],
+        [0, 0, 0.5, 0],
+        [1, 0, 0.5, 0],
+        [0, 1, 0,   0],
+    ]
 
-        red_weight =   GRADIENT_STRENGTH * (1.0 - row_i / 3.0)
-        green_weight = STAMP_STRENGTH * stamp[row_i][col_i]
-        blue_weight =  GRADIENT_STRENGTH * (1.0 - col_i / 3.0)
+    for col_i in range(4):
+        for row_i in range(4):
+            if row_i == 3 and col_i == 3:
+                continue
 
-        creative[:, :, 0] += demux[row_i + col_i*4, :, :, 0] * red_weight
-        creative[:, :, 1] += demux[row_i + col_i*4, :, :, 1] * green_weight
-        creative[:, :, 2] += demux[row_i + col_i*4, :, :, 2] * blue_weight
+            red_weight =   GRADIENT_STRENGTH * (1.0 - row_i / 3.0)
+            green_weight = STAMP_STRENGTH * stamp[row_i][col_i]
+            blue_weight =  GRADIENT_STRENGTH * (1.0 - col_i / 3.0)
+
+            creative[:, :, 0] += demux[row_i + col_i*4, :, :, 0] * red_weight
+            creative[:, :, 1] += demux[row_i + col_i*4, :, :, 1] * green_weight
+            creative[:, :, 2] += demux[row_i + col_i*4, :, :, 2] * blue_weight
 
 
-creative += ambient * AMBIENT_FACTOR
+    creative += ambient * AMBIENT_FACTOR
 
-fig = im.show(creative, "Creative relighting", GAMMA_DISPLAY, fignum=10)
-im.save_figure(fig, "08_creative")
+    fig = im.show(creative, "Creative relighting", GAMMA_DISPLAY, fignum=10)
+    im.save_figure(fig, "08_creative")
 
+elif IS_BONUS:
+
+    AMBIENT_FACTOR = 1.0
+    
+    stamps = np.array([
+        [[0.5, 0.5, 0.1], [0.6, 0.1, 0.9], [0.1, 0.6, 0.6]],
+        [[0.8, 0.2, 0.2], [0.1, 0.2, 1.0], [0.1, 1.0, 0.2]],
+        [[0.4, 0.2, 0.3], [0.9, 0.2, 0.1], [0.2, 0.1, 0.8]],
+        [[0.5, 0.4, 0.6], [0.7, 0.8, 0.7], [0.9, 0.5, 0.7]]
+    ])
+    STAMP_STRENGTH = 1
+    GRADIENT_STRENGTH = 0.75
+    fig_num = 10
+    for stamp in stamps:
+        creative = np.zeros_like(demux[0])
+
+        for i in range(3):
+            red_weight =   STAMP_STRENGTH * stamp[i][0]
+            green_weight = STAMP_STRENGTH * stamp[i][1]
+            blue_weight =  STAMP_STRENGTH * stamp[i][2]
+
+            creative[:, :, 0] += demux[i, :, :, 0] * red_weight
+            creative[:, :, 1] += demux[i, :, :, 1] * green_weight
+            creative[:, :, 2] += demux[i, :, :, 2] * blue_weight
+
+
+        creative += ambient * AMBIENT_FACTOR
+
+        fig = im.show(creative, "Creative relighting", GAMMA_DISPLAY, fignum=fig_num)
+        im.save_figure(fig, f"08_{fig_num}_creative")
+        fig_num += 1
 
 # ======================================================================
 # 7. Qualitative comparison against single-site capture
@@ -241,7 +328,11 @@ im.save_figure(fig, "08_creative")
 # direct alternative to multiplexing. They cost the same number of
 # exposures, so this is a fair comparison.
 
-impulse = im.load_stack(DATA_PATH, "Impulse", N_SITES, BLACK_LEVEL)
+impulse: np.ndarray
+if IS_INPUT_RAW:
+    impulse = utils.load_raw_stack(DATA_PATH, "Impulse", N_SITES, BLACK_LEVEL)
+else:
+    impulse = im.load_stack(DATA_PATH, "Impulse", N_SITES, BLACK_LEVEL / utils.MAX_PIXEL)
 
 fig = im.show_stack(im.side_by_side(impulse, demux + ambient),
                     "Impulse (left) vs demultiplexed (right)",
@@ -251,13 +342,21 @@ im.save_figure(fig, "09_impulse_vs_demux")
 
 # The all-on frames, averaged, are the gold standard: a direct
 # measurement of what both methods are trying to predict.
-allon_gold_standard = im.load_stack(DATA_PATH, "AllOn", N_ALLON, BLACK_LEVEL).mean(axis=0)
+allon_gold_standard: np.ndarray
+if IS_INPUT_RAW:
+    allon_gold_standard = utils.load_raw_stack(
+        DATA_PATH, "AllOn", N_ALLON, BLACK_LEVEL
+    ).mean(axis=0)
+else:
+    allon_gold_standard = im.load_stack(
+        DATA_PATH, "AllOn", N_ALLON, BLACK_LEVEL / utils.MAX_PIXEL
+    ).mean(axis=0)
 
 # NOTE QUESTION
 # 6: Estimate the all-on image from the impulse frames.
 #    Think carefully about the ambient.
 
-allon_est_impulse = ambient - ambient * N_SITES + np.sum(impulse, axis=0)
+allon_est_impulse = ambient * (N_SITES - 1) + np.sum(impulse, axis=0)
 
 fig = im.show_stack(
     im.side_by_side(allon_gold_standard, allon_est_impulse, allon_est_demux)[None],
@@ -273,6 +372,14 @@ im.save_figure(fig, "10_allon_three_way")
 
 error_demux = allon_est_demux - allon_gold_standard
 error_impulse = allon_est_impulse - allon_gold_standard
+
+if IS_INPUT_RAW:
+    error_demux = utils.debayer_raw(error_demux)
+    error_demux = utils.normalise_float_image(error_demux)
+    error_demux = utils.rotate_image(error_demux)
+    error_impulse = utils.debayer_raw(error_impulse)
+    error_impulse = utils.normalise_float_image(error_impulse)
+    error_impulse = utils.rotate_image(error_impulse)
 
 fig = im.show_stack(
     im.side_by_side(error_impulse ** 2, error_demux ** 2)[None],
@@ -291,6 +398,10 @@ im.save_figure(fig, "11_error_images")
 demux_noise = allon_gold_standard - allon_est_demux
 impulse_noise = allon_gold_standard - allon_est_impulse
 
+if IS_INPUT_RAW:
+    demux_noise /= utils.MAX_PIXEL
+    impulse_noise /= utils.MAX_PIXEL
+
 mse_demux = np.mean((demux_noise) ** 2)
 mse_impulse = np.mean((impulse_noise) ** 2)
 
@@ -307,8 +418,16 @@ psnr_advantage_db = psnr_demux_db - psnr_impulse_db
 # its own, the hardest case, using the FirstOn frames as the gold
 # standard: those were captured with site 1 on and nothing else.
 
-first_gold_standard = im.load_stack(DATA_PATH, "FirstOn", N_FIRSTON,
-                                    BLACK_LEVEL).mean(axis=0)
+first_gold_standard: np.ndarray
+if IS_INPUT_RAW:
+    first_gold_standard = utils.load_raw_stack(
+        DATA_PATH, "FirstOn", N_FIRSTON, BLACK_LEVEL
+    ).mean(axis=0)
+else:
+    first_gold_standard = im.load_stack(
+        DATA_PATH, "FirstOn", N_FIRSTON, BLACK_LEVEL / utils.MAX_PIXEL
+    ).mean(axis=0)
+
 
 # NOTE
 # 8: Estimate the site-1 image by each method. The impulse method
@@ -328,6 +447,10 @@ im.save_figure(fig, "12_single_site_three_way")
 demux_first_noise = first_gold_standard - first_est_demux
 impulse_first_noise = first_gold_standard - first_est_impulse
 
+if IS_INPUT_RAW:
+    demux_first_noise /= utils.MAX_PIXEL
+    impulse_first_noise /= utils.MAX_PIXEL
+
 mse_first_demux = np.mean((demux_first_noise) ** 2)
 mse_first_impulse = np.mean((impulse_first_noise) ** 2)
 
@@ -343,10 +466,17 @@ def row(label, value, unit=""):
     """durr"""
     print(f"  {label:<32} {value} {unit}".rstrip())
 
+ambient_mean = ambient.mean()
+ambient_std = ambient_stack.std(axis=0).mean()
+
+if IS_INPUT_RAW:
+    ambient_mean /= utils.MAX_PIXEL
+    ambient_std /= utils.MAX_PIXEL
+
 print("")
 print("=" * 58)
-row("ambient mean level", f"{ambient.mean():.5f}")
-row("ambient std dev", f"{ambient_stack.std(axis=0).mean():.5f}")
+row("ambient mean level", f"{ambient_mean:.5f}")
+row("ambient std dev", f"{ambient_std:.5f}")
 print("-" * 58)
 row("ALL-ON IMAGE", "")
 row("  MSE, impulse estimate", f"{mse_impulse:.3e}")
