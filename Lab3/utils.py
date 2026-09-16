@@ -10,6 +10,9 @@ import cv2
 import rawpy
 import matplotlib.pyplot as plt
 
+# ========================================
+# Module constants and members
+# ========================================
 
 MAX_PIXEL : float = 1023
 """Max value of RAW pixels."""
@@ -17,19 +20,41 @@ MAX_PIXEL : float = 1023
 BLACK_LEVEL: int = 16
 """Black level of sensor."""
 
-FIXED_PATTERN_PICKLE_PATH: str = "fixed_pattern.pkl"
+FIXED_PATTERN_PICKLE_PATH: str = "Lab3/fixed_pattern.pkl"
 """Path to pickle file with fixed pattern noise"""
 
 fixed_pattern: np.ndarray
 """Fixed pattern of sensor."""
 
+# ========================================
+# Initialise module
+# ========================================
+
 # Load pickle
 try:
     with open(FIXED_PATTERN_PICKLE_PATH, "rb") as f:
         fixed_pattern = pickle.load(f)
+    print("Info: Fixed pattern pickle loaded.")
 except FileNotFoundError:
     print("Warning: Fixed pattern pickle not found.")
 
+
+# ========================================
+# Module defs
+# ========================================
+
+
+def trim_black(image: np.ndarray) -> np.ndarray:
+    """Crop black pixels from image, may need further cropping."""
+    mask = image != 0
+
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+
+    return image[
+        np.where(rows)[0][0]:np.where(rows)[0][-1] + 1,
+        np.where(cols)[0][0]:np.where(cols)[0][-1] + 1,
+    ]
 
 def remove_black_level(img: np.ndarray) -> np.ndarray:
     """Removes the black level from the image."""
@@ -75,10 +100,11 @@ def white_balance_rgb(rgb: np.ndarray, p: float = 4.0) -> np.ndarray:
     return balanced
 
 def debayer_raw(raw: np.ndarray) -> np.ndarray:
-    """Convert the raw DNG into an float32 debayered RGB image, needs white balance."""
-    raw = np.asarray(raw, dtype=np.uint16, order="C")
+    """Convert raw DNG into a float32 debayered RGB image."""
+    raw = np.asarray(raw, dtype=np.int16, order="C")
+    raw = np.clip(raw, 0, np.iinfo(np.uint16).max).astype(np.uint16)
 
-    rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB) # pylint: disable=no-member
+    rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB)  # pylint: disable=no-member
     rgb = rgb16.astype(np.float32)
 
     return rgb
@@ -114,7 +140,7 @@ def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> Non
     plt.tight_layout()
     plt.show()
 
-def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
+def save_image(data: np.ndarray, filename: str, output_path: str, cmap: str = None) -> None:
     """Output the data as an float RGB png at the provided path and file name."""
     norm = normalise_float_image(data)
 
@@ -123,4 +149,7 @@ def save_image(data: np.ndarray, filename: str, output_path: str) -> None:
 
     output_file = output_dir / f"{filename}.png"
 
-    plt.imsave(output_file, norm)
+    if cmap:
+        plt.imsave(output_file, norm, cmap=cmap)
+    else:
+        plt.imsave(output_file, norm)

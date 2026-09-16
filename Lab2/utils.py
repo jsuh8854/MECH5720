@@ -9,8 +9,44 @@ import cv2
 import rawpy
 import matplotlib.pyplot as plt
 
-# Max value of RAW pixels.
-MAX_PIXEL : float = 1024
+MAX_PIXEL: float = 1024
+"""Max value of RAW pixels."""
+
+def create_line_trace_of_raw(raw: np.ndarray, output_folder: str, output_file: str) -> None:
+    """Get line-trace plot of images and save plot."""
+
+    plt.figure()
+
+    green = raw[0::2, 1::2]
+    row = green[:, raw.shape[0]//2]
+
+    x = np.arange(green.shape[0])
+
+    plt.plot(x, row)
+
+    plt.xlabel("X Position")
+    plt.ylabel("Intensity")
+    plt.title("Green Channel Line-trace")
+    plt.grid(True)
+    plt.legend(output_file)
+    plt.savefig(output_folder + "/" + output_file +  ".png")
+
+    plt.close()
+
+def load_raw_stack(path, prefix, n_frames=None, black_level=0) -> np.ndarray:
+    """Loads in a stack of raw images."""
+    stack = []
+
+    for i in range(1, n_frames+1):
+        file_name = f"{path}/{prefix}{i:03d}.dng"
+        # print(file_name)
+        raw = read_raw(file_name)
+        # Skip rotating until debayering
+        img_crop = crop_square(raw, 960, 768, 1024)
+        # print(img_crop.shape)
+        stack.append( img_crop - black_level )
+
+    return np.stack(stack)
 
 def reduce_image(img: np.ndarray, scale: int) -> np.ndarray:
     """ Digital gain image to maximise brightness, at the cost of noise being amplified.
@@ -18,6 +54,15 @@ def reduce_image(img: np.ndarray, scale: int) -> np.ndarray:
     """
     return img[::scale, ::scale]
 
+def crop_square(img: np.ndarray, start_x: int, start_y: int, size: int) -> np.ndarray:
+    """Crop a size square from the provided co-ordinates."""
+
+    # Lock to even pixels
+    start_x = start_x // 2 * 2
+    start_y = start_y // 2 * 2
+    size = size // 2 * 2
+
+    return img[start_y:start_y + size, start_x:start_x + size]
 
 def brighten_image(img: np.ndarray, gain: float = -1.0) -> np.ndarray:
     """ Digital gain image to maximise brightness, at the cost of noise being amplified.
@@ -49,20 +94,27 @@ def white_balance_rgb(rgb: np.ndarray, p: float = 4.0) -> np.ndarray:
     return balanced
 
 def debayer_raw(raw: np.ndarray) -> np.ndarray:
-    """Convert the raw DNG into an float32 debayered RGB image, needs white balance."""
-    raw = np.asarray(raw, dtype=np.uint16, order="C")
+    """Convert the raw DNG into an float32 debayered RGB image with flag ."""
+    raw = np.clip(raw, 0, MAX_PIXEL).astype(np.uint16, order="C")
 
     rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB) # pylint: disable=no-member
     rgb = rgb16.astype(np.float32)
 
     return rgb
 
+def normalise_raw(raw: np.ndarray) -> np.ndarray:
+    """Convert the raw DNG into an float32 still bayered image in the range of [0, 1]."""
+    raw = np.asarray(raw, dtype=np.float32, order="C")
+    raw /= float(MAX_PIXEL)
+
+    return raw
+
 def read_raw(filename: str) -> np.ndarray:
     """Reads the DNG file and returns as an np.ndarray."""
     try:
         # Load and view the raw bayer image
         with rawpy.imread(filename) as raw:
-            return np.array(raw.raw_image, dtype=np.uint16, copy=True, order="C")
+            return np.array(raw.raw_image, dtype=np.int16, copy=True, order="C")
 
     except FileNotFoundError as e:
         print(f"Error loading {filename}: {e}")
@@ -75,8 +127,6 @@ def convert_to_rgb8(img: np.ndarray) -> np.ndarray:
 def normalise_float_image(img: np.ndarray) -> np.ndarray:
     """Convert from [0, MAX_PIXEL) to [0, 1]."""
     return img / (MAX_PIXEL - 1.0)
-
-
 
 def show_image(data: np.ndarray, filename: str = "You forgot the title!") -> None:
     """Show the image data in a Matplotlib graph."""
