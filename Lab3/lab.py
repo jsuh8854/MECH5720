@@ -9,6 +9,7 @@ import utils
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.ndimage import gaussian_filter
+from scipy.signal import find_peaks
 import cv2
 
 # ========================================
@@ -24,6 +25,9 @@ P1_PNG_PATH: str = "Lab3/p1_pngs"
 P1_FFT_PATH: str = "Lab3/p1_ffts"
 """blurg"""
 
+P7_RAW_PATH: str = "Lab3/mtf"
+"""Folder path to siemen star raws"""
+
 CENTRE_NAME: str = "Lab3/arst.png"
 """Name of the centre dngs for Part 2."""
 
@@ -31,7 +35,7 @@ LEVIN: int = 0
 NAYAR: int = 1
 NAYAR_EQUIVALENT: int = 2
 
-APERTURE_NAMES: list[str] = ["levin", "nayar", "nayar_equiv"]
+APERTURE_NAMES: list[str] = ["levin", "nayar", "circ"]
 
 APERTURE_FOLDER_NAMES: list[str] = [
     "Lab3/psf_levin",
@@ -40,32 +44,48 @@ APERTURE_FOLDER_NAMES: list[str] = [
 ]
 
 THEORETICAL_PSF_FOLDER: str = "Lab3/theoretical_psf"
+"""Folder to save the theoretical psfs"""
+
+CIRCLES_FOLDER: str = "Lab3/circles"
+"""Folder to save the Siemen Star images"""
 
 DEPTH_FILE_NAMES: list[str] = [
-    "-2", 
+    "",
     "0", 
-    "2"
-]
-"""The names of the files of each depth"""
-
-DEPTH_DISPLAY_NAMES: list[str] = [
-    "Close", 
-    "Focus", 
-    "Far",
-    "Theoretical"
-]
-"""The names of each depth for display"""
-
-DEPTH_COLORS: list[str] = ['r', 'g', 'b', 'k']
-"""Colours used for plotting different depths"""
-
-CORNER_NAMES: list[str] = [
+    "1", 
+    "2",
     "top_left",
     "bot_left",
     "top_right",
-    "bot_right",
+    "bot_right"
 ]
-"""Names of the corner dngs for Part 2."""
+"""The names of the files of each depth and corner."""
+
+DEPTH_DISPLAY_NAMES: list[str] = [
+    "Theoretical",
+    "Focus", 
+    "Far", 
+    "Farther",
+    "Top Left",
+    "Bottom Left",
+    "Top Right",
+    "Bottom Right",
+]
+"""The names of each depth for display"""
+
+DEPTH_COLORS: list[str] = [
+    "k",
+    "r",
+    "g",
+    "b",
+    "tab:orange",
+    "tab:purple",
+    "tab:brown",
+    "tab:cyan",
+
+]
+"""Colours used for plotting different depths"""
+
 
 DESIGNED_PSFS: list[np.ndarray] = [
     np.array([
@@ -100,6 +120,9 @@ DESIGNED_PSFS: list[np.ndarray] = [
     ])
 ]
 
+THEORETICAL_PSF_SCALES : list[float] = [2.0, 2.0, 1.25]
+"""Experimentally obtained scales for the PSF."""
+
 PSF_SIZE: int = 128
 """Size of psf crop"""
 
@@ -108,6 +131,22 @@ FFT_SIZE: int = 256
 
 FFT_CMAP: str = "inferno"
 """Colour map to use for the FFT plots."""
+
+STAR_CENTERS: list[tuple[int, int]] = [
+    (996, 557),
+    (998, 525),
+    (1025, 594),
+]
+"""(x, y) centres of the stars, found from trial and error..."""
+
+STAR_PADDING_OFFSET: tuple[int, int] = (540, 960)
+"""Offset to the centre introduced from padding"""
+
+STAR_PAD_SIZE: int = 3000
+"""Size to pad image for radius finding."""
+
+STAR_BLACK_THRESHOLD: int = 16
+"""Brightness to count as a black band for finding the radius of the star"""
 
 # ========================================
 # Lab helpers
@@ -140,9 +179,13 @@ def get_fft_db(img: np.ndarray) -> np.ndarray:
 
     return 20 * np.log10(magnitude / np.max(magnitude))
 
-def pad_image(img: np.ndarray, size: int) -> np.ndarray:
-    """Pads the image to the requested size."""
-    padded: np.ndarray = np.zeros((size, size), dtype=img.dtype)
+def pad_image(img: np.ndarray, size: int, value: int = 0) -> np.ndarray:
+    """Pads the image to the requested size and value if requested."""
+    padded: np.ndarray = np.full(
+        (size, size),
+        value,
+        dtype=img.dtype,
+    )
 
     h, w = img.shape
     y_start = (size - h) // 2
@@ -150,15 +193,23 @@ def pad_image(img: np.ndarray, size: int) -> np.ndarray:
 
     padded[
         y_start:y_start + h,
-        x_start:x_start + w
+        x_start:x_start + w,
     ] = img
 
     return padded
 
+def get_theoretical_psf(idx: int, scale: float = 1.0) -> np.ndarray:
+    """Return the theoretical PSF, scaled and padded."""
 
-def get_theoretical_psf(idx: int) -> None:
-    """Returns the theoretical PSF and its FFT"""
-    psf = DESIGNED_PSFS[idx]
+    psf = DESIGNED_PSFS[idx].astype(np.float32)
+
+    if scale != 1.0:
+        height, width = psf.shape[:2]
+        psf = cv2.resize( # pylint: disable=no-member
+            psf,
+            (round(width * scale), round(height * scale)),
+            interpolation=cv2.INTER_LINEAR # pylint: disable=no-member
+        )
 
     padded_psf = pad_image(psf, PSF_SIZE)
 
@@ -166,26 +217,36 @@ def get_theoretical_psf(idx: int) -> None:
         padded_psf,
         f"{APERTURE_NAMES[idx]}_psf",
         THEORETICAL_PSF_FOLDER,
-        "gray"
+        "gray",
     )
 
     return padded_psf
 
 def crop_from_brightest(img: np.ndarray, crop_size: int) -> np.ndarray:
-    """Crop around the brightest blob, favouring blobs with their centre in the crop."""
+    """Crop around the brightest blob, clamping the crop to image edges."""
+
+    height, width = img.shape[:2]
+
+    if crop_size > height or crop_size > width:
+        raise ValueError(
+            f"crop_size ({crop_size}) must not exceed image dimensions "
+            f"({width}x{height})"
+        )
 
     # Smooth the image so that we find the centre of a bright region
     # rather than an individual bright pixel.
     brightness = gaussian_filter(img.astype(float), crop_size / 4)
 
-    # Get co-ordinates of brightest pixel after blurring
-    max_y, max_x = np.unravel_index( # pylint: disable=unbalanced-tuple-unpacking
+    # Get coordinates of brightest pixel after blurring.
+    max_y, max_x = np.unravel_index(  # pylint: disable=unbalanced-tuple-unpacking
         np.argmax(brightness),
         brightness.shape,
     )
 
-    y_start = max_y - crop_size // 2
-    x_start = max_x - crop_size // 2
+    # Centre the crop on the brightest point, then clamp the start
+    # coordinate so the crop remains entirely inside the image.
+    y_start = np.clip(max_y - crop_size // 2, 0, height - crop_size)
+    x_start = np.clip(max_x - crop_size // 2, 0, width - crop_size)
 
     return img[
         y_start:y_start + crop_size,
@@ -215,6 +276,32 @@ def radial_line_trace(img: np.ndarray, size: int = FFT_SIZE) -> np.ndarray:
     radius = np.arange(max_radius)
 
     return radius, mean_trace, min_trace
+
+def get_contrast_per_angle_at_radius(polar: np.ndarray, angles: np.ndarray, radius: int) -> np.ndarray:
+    """Returns contrast as a function of angle"""
+    circle = polar[:, radius]
+
+    peaks, _ = find_peaks(circle, distance=16)
+    troughs, _ = find_peaks(-circle, distance=16)
+
+    i_max = np.interp(angles, peaks, circle[peaks])
+    i_min = np.interp(angles, troughs, circle[troughs])
+    return np.abs((i_max - i_min) / (i_max + i_min))
+
+def get_average_contrast_per_radius(polar: np.ndarray, max_radius: int) -> np.ndarray:
+    """Returns a list of contrast values at each radius"""
+    contrast = np.zeros(max_radius)
+
+    for r in range(max_radius):
+        peaks, _ = find_peaks(polar[:, r], distance=16)
+        troughs, _ = find_peaks(-polar[:, r], distance=16)
+
+        i_max = np.mean(peaks)
+        i_min = np.mean(troughs)
+
+        contrast[r] = np.abs((i_max - i_min) / (i_max + i_min))
+
+    return contrast
 
 # ========================================
 # Lab part subroutines
@@ -249,7 +336,7 @@ def lens_psf_process() -> None:
         utils.save_image(fft, f"{i}", P1_FFT_PATH, FFT_CMAP)
 
 def aperture_psf_depth(idx: int) -> None:
-    """Part 6a"""
+    """Part 6"""
 
     # ====================
     # Local members
@@ -263,20 +350,44 @@ def aperture_psf_depth(idx: int) -> None:
     line_plot_mean_trace: list[np.ndarray] = []
     line_plot_min_trace: list[np.ndarray] = []
 
-    psf_fig, psf_axes = plt.subplots(1, 4)
+    psf_fig, psf_axes = plt.subplots(2, 4)
     fft_fig, fft_axes = plt.subplots(
-        1, 4,
-        figsize=(16, 4),
+        2, 4,
+        figsize=(16, 8),
         constrained_layout=True
     )
-    trace_fig, trace_ax = plt.subplots(figsize=(16, 9))
+    trace_ave_fig, trace_ave_ax = plt.subplots(figsize=(16, 9))
+    trace_min_fig, trace_min_ax = plt.subplots(figsize=(16, 9))
 
     # ====================
-    # Get the PSFs, FFTs, and line-trace
+    # Add in theoretical PSF, FFT, and line-trace
     # ====================
 
-    for i, (psf_ax, fft_ax) in enumerate(zip(psf_axes, fft_axes)):
-        if i == 3: # Skip the theoretical one
+    # Get theoretical PSF and FFT
+    theoretical_psf: np.ndarray = get_theoretical_psf(idx, THEORETICAL_PSF_SCALES[idx])
+    img_pad: np.ndarray = pad_image(theoretical_psf, FFT_SIZE)
+    fft: np.ndarray = get_fft_db(img_pad)
+    ffts.append(fft)
+
+    # Line trace
+    radius, mean_trace, min_trace = radial_line_trace(fft, FFT_SIZE)
+
+    line_plot_radii.append(radius)
+    line_plot_mean_trace.append(mean_trace)
+    line_plot_min_trace.append(min_trace)
+
+    # Add PSF theoretical to graph
+    psf_axes[0, 0].imshow(theoretical_psf, cmap="gray")
+    psf_axes[0, 0].set_title("Theoretical")
+    psf_axes[0, 0].axis("off")
+
+    # ====================
+    # Get the PSFs, FFTs, and line-trace of measured
+    # ====================
+
+    for i, (psf_ax, fft_ax) in enumerate(zip(psf_axes.flat, fft_axes.flat)):
+        # Skip theoretical
+        if i == 0:
             continue
 
         # Import the files
@@ -307,41 +418,15 @@ def aperture_psf_depth(idx: int) -> None:
         line_plot_min_trace.append(min_trace)
 
     # ====================
-    # Add in theoretical PSF, FFT, and line-trace
-    # ====================
-
-    # Get theoretical PSF and FFT
-    theoretical_psf: np.ndarray = get_theoretical_psf(idx)
-    img_pad: np.ndarray = pad_image(theoretical_psf, FFT_SIZE)
-    fft: np.ndarray = get_fft_db(img_pad)
-    ffts.append(fft)
-
-    # Line trace
-    radius, mean_trace, min_trace = radial_line_trace(fft, FFT_SIZE)
-
-    line_plot_radii.append(radius)
-    line_plot_mean_trace.append(mean_trace)
-    line_plot_min_trace.append(min_trace)
-
-    # ====================
     # Finish creating plots
     # ====================
 
-    # PSF theoretical
-    psf_axes[3].imshow(theoretical_psf, cmap="gray")
-    psf_axes[3].set_title("Theoretical")
-    psf_axes[3].axis("off")
-
-    # Use one common colour range for all FFTs
-    fft_vmin = min(np.min(fft) for fft in ffts)
-    fft_vmax = max(np.max(fft) for fft in ffts)
-
-    for fft_ax, fft, name in zip(fft_axes, ffts, DEPTH_DISPLAY_NAMES):
+    for fft_ax, fft, name in zip(fft_axes.flat, ffts, DEPTH_DISPLAY_NAMES):
         im = fft_ax.imshow(
             fft,
             cmap=FFT_CMAP,
-            vmin=fft_vmin,
-            vmax=fft_vmax
+            vmin=-100,
+            vmax=0
         )
 
         fft_ax.set_title(name)
@@ -361,33 +446,43 @@ def aperture_psf_depth(idx: int) -> None:
     # Create line-trace of frequence response over radius
     # ====================
 
-    for radius, mean_trace, min_trace, name, color in zip(
+    for i, (radius, mean_trace, min_trace, name, color) in enumerate(zip(
         line_plot_radii,
         line_plot_mean_trace,
         line_plot_min_trace,
         DEPTH_DISPLAY_NAMES,
         DEPTH_COLORS
-    ):
-        trace_ax.plot(
+    )):
+        trace_ave_ax.plot(
             radius,
             mean_trace,
-            f"{color}-",
-            label=f"{name} Mean"
+            color=color,
+            linestyle="-" if i == 0 else ("--" if i < 4 else ":"),
+            label=f"{name}"
         )
-        trace_ax.plot(
+        trace_min_ax.plot(
             radius,
             min_trace,
-            f"{color}--",
-            label=f"{name} Min."
+            color=color,
+            linestyle="-" if i == 0 else ("--" if i < 4 else ":"),
+            label=f"{name}"
         )
 
-    trace_ax.set_xlabel("Distance from centre (pixels)")
-    trace_ax.set_ylabel("Intensity")
-    trace_ax.set_title(f"{APERTURE_NAMES[idx]} radial line trace")
-    trace_ax.grid(True, alpha=0.3)
-    trace_ax.legend()
+    trace_ave_ax.set_xlabel("Distance from centre (pixels)")
+    trace_ave_ax.set_ylabel("Intensity")
+    trace_ave_ax.set_title(f"{APERTURE_NAMES[idx]} radial line trace (average)")
+    trace_ave_ax.grid(True, alpha=0.3)
+    trace_ave_ax.legend()
 
-    trace_fig.tight_layout()
+    trace_ave_fig.tight_layout()
+
+    trace_min_ax.set_xlabel("Distance from centre (pixels)")
+    trace_min_ax.set_ylabel("Intensity")
+    trace_min_ax.set_title(f"{APERTURE_NAMES[idx]} radial line trace (minimum)")
+    trace_min_ax.grid(True, alpha=0.3)
+    trace_min_ax.legend()
+
+    trace_min_fig.tight_layout()
 
     # ====================
     # Save plots
@@ -405,15 +500,119 @@ def aperture_psf_depth(idx: int) -> None:
         bbox_inches="tight"
     )
 
-    trace_fig.savefig(
-        f"{folder_name}_fft_trace.png",
+    trace_ave_fig.savefig(
+        f"{folder_name}_fft_trace_ave.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    trace_min_fig.savefig(
+        f"{folder_name}_fft_trace_min.png",
         dpi=300,
         bbox_inches="tight"
     )
 
     plt.close(psf_fig)
     plt.close(fft_fig)
-    plt.close(trace_fig)
+    plt.close(trace_ave_fig)
+    plt.close(trace_min_fig)
+
+def compute_contrast_and_mtf(idx: int) -> None:
+    """Part 7"""
+
+    # --------------------
+    # Load image
+    # --------------------
+    file_name = APERTURE_NAMES[idx]
+
+    raw_path: str = f"{P7_RAW_PATH}/mtf_{file_name}.dng"
+    raw: np.ndarray = utils.read_raw(raw_path)
+    img: np.ndarray = process_raw(raw)
+
+    # utils.save_image(img, file_name, CIRCLES_FOLDER, cmap="gray")
+
+    # --------------------
+    # Calculate contrast
+    # --------------------
+
+    # Convert to polar to find radius
+    angle_resolution = 3
+
+    angle_count = 360 * angle_resolution
+    max_radius = 1500
+
+    img_padded = pad_image(img, STAR_PAD_SIZE, 32)
+
+    polar = cv2.warpPolar(  # pylint: disable=no-member
+        img_padded,
+        (max_radius, angle_count),
+        (
+            STAR_CENTERS[idx][0] + STAR_PADDING_OFFSET[0],
+            STAR_CENTERS[idx][1] + STAR_PADDING_OFFSET[1]
+        ),
+        max_radius,
+        cv2.WARP_POLAR_LINEAR # pylint: disable=no-member
+    )
+
+    # Scan through each column until there's no more than 1% of pixels
+    # below STAR_BLACK_THRESHOLD on that column
+    black_fraction = np.mean(
+        polar <= STAR_BLACK_THRESHOLD,
+        axis=0,
+    )
+
+    # Start from somewhere in the middle to not get a false early reading
+    start_offset = 128
+
+    valid_columns = black_fraction[start_offset:] <= 0.01
+    radius = np.argmax(valid_columns) + start_offset
+    angles = np.arange(angle_count)
+
+    close_contrast = get_contrast_per_angle_at_radius(polar, angles, radius // 3)
+    middle_contrast = get_contrast_per_angle_at_radius(polar, angles,radius // 2)
+    far_contrast = get_contrast_per_angle_at_radius(polar, angles,2 * radius // 3)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+
+    ax.plot(angles // angle_resolution, close_contrast, "r", label="Close")
+    ax.plot(angles // angle_resolution, middle_contrast, "g", label="Middle")
+    ax.plot(angles // angle_resolution, far_contrast, "b", label="Far")
+    ax.set_ylabel("Contrast")
+    ax.set_xlabel("Angle")
+    ax.set_xticks(np.arange(0, 361, 30))
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+
+    fig.savefig(
+        f"Lab3/mtf_{APERTURE_NAMES[idx]}_contrast.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    # --------------------
+    # Calculate MTF
+    # --------------------
+
+    n: int = 64 # Spoke count
+    r = np.arange(radius) # Radii
+    frequency = n / (2 * np.pi * r)
+    mtf = get_average_contrast_per_radius(polar, radius)
+    mtf_norm = mtf / 0.1
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.plot(frequency[5:], mtf_norm[5:])
+    ax.set_xlabel("Spatial frequency (cycles/pixel)")
+    ax.set_ylabel("MTF normalised magnitude")
+    ax.set_title(f"{APERTURE_NAMES[idx]} MTF from Siemens-star target")
+    ax.grid(True)
+
+    fig.tight_layout()
+    fig.savefig(
+        f"Lab3/mtf_{APERTURE_NAMES[idx]}_MTF.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
 
 
 # ========================================
@@ -421,15 +620,28 @@ def aperture_psf_depth(idx: int) -> None:
 # ========================================
 
 if __name__ == "__main__":
+    # --------------------
     # Setup
+    # --------------------
+
     create_circle_psf()
 
+    # --------------------
     # Lab subroutines
+    # --------------------
 
     # show_fixed_noise() # Part 0
     # lens_psf_process() # Part 1
 
     # Part 6
-    aperture_psf_depth(LEVIN)
+    # aperture_psf_depth(LEVIN)
     # aperture_psf_depth(NAYAR)
-    aperture_psf_depth(NAYAR_EQUIVALENT)
+    # aperture_psf_depth(NAYAR_EQUIVALENT)
+
+    # Part 7
+    # compute_contrast_and_mtf(LEVIN)
+    # compute_contrast_and_mtf(NAYAR)
+    # compute_contrast_and_mtf(NAYAR_EQUIVALENT)
+
+    # Part 8
+    

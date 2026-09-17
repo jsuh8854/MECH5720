@@ -20,7 +20,7 @@ MAX_PIXEL : float = 1023
 BLACK_LEVEL: int = 16
 """Black level of sensor."""
 
-FIXED_PATTERN_PICKLE_PATH: str = "Lab3/fixed_pattern.pkl"
+FIXED_PATTERN_PICKLE_PATH: str = "fixed_pattern.pkl"
 """Path to pickle file with fixed pattern noise"""
 
 fixed_pattern: np.ndarray
