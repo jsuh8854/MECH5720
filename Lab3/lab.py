@@ -148,6 +148,16 @@ STAR_PAD_SIZE: int = 3000
 STAR_BLACK_THRESHOLD: int = 16
 """Brightness to count as a black band for finding the radius of the star"""
 
+GOLD_STANDARD_COUNT: int = 10
+"""Number of gold standard shots"""
+
+NATURAL_FOLDERS: list[str] = [
+    "Lab3/nat_levin",
+    "Lab3/nat_nayar",
+    "Lab3/nat_circ"
+]
+"""Folder for natural image raws"""
+
 # ========================================
 # Lab helpers
 # ========================================
@@ -179,17 +189,17 @@ def get_fft_db(img: np.ndarray) -> np.ndarray:
 
     return 20 * np.log10(magnitude / np.max(magnitude))
 
-def pad_image(img: np.ndarray, size: int, value: int = 0) -> np.ndarray:
-    """Pads the image to the requested size and value if requested."""
+def pad_image(img: np.ndarray, size: (int, int), value: int = 0) -> np.ndarray:
+    """Pads the image to the requested size (y, x) and value if requested."""
     padded: np.ndarray = np.full(
-        (size, size),
+        size,
         value,
         dtype=img.dtype,
     )
 
     h, w = img.shape
-    y_start = (size - h) // 2
-    x_start = (size - w) // 2
+    y_start = (size[0] - h) // 2
+    x_start = (size[1] - w) // 2
 
     padded[
         y_start:y_start + h,
@@ -211,7 +221,7 @@ def get_theoretical_psf(idx: int, scale: float = 1.0) -> np.ndarray:
             interpolation=cv2.INTER_LINEAR # pylint: disable=no-member
         )
 
-    padded_psf = pad_image(psf, PSF_SIZE)
+    padded_psf = pad_image(psf, (PSF_SIZE, PSF_SIZE))
 
     utils.save_image(
         padded_psf,
@@ -223,7 +233,7 @@ def get_theoretical_psf(idx: int, scale: float = 1.0) -> np.ndarray:
     return padded_psf
 
 def crop_from_brightest(img: np.ndarray, crop_size: int) -> np.ndarray:
-    """Crop around the brightest blob, clamping the crop to image edges."""
+    """Crop around the brightest blob of pixels after blurring, clamping the crop to image edges."""
 
     height, width = img.shape[:2]
 
@@ -277,7 +287,11 @@ def radial_line_trace(img: np.ndarray, size: int = FFT_SIZE) -> np.ndarray:
 
     return radius, mean_trace, min_trace
 
-def get_contrast_per_angle_at_radius(polar: np.ndarray, angles: np.ndarray, radius: int) -> np.ndarray:
+def get_contrast_per_angle_at_radius(
+    polar: np.ndarray,
+    angles: np.ndarray,
+    radius: int
+) -> np.ndarray:
     """Returns contrast as a function of angle"""
     circle = polar[:, radius]
 
@@ -365,12 +379,12 @@ def aperture_psf_depth(idx: int) -> None:
 
     # Get theoretical PSF and FFT
     theoretical_psf: np.ndarray = get_theoretical_psf(idx, THEORETICAL_PSF_SCALES[idx])
-    img_pad: np.ndarray = pad_image(theoretical_psf, FFT_SIZE)
+    img_pad: np.ndarray = pad_image(theoretical_psf, (FFT_SIZE, FFT_SIZE))
     fft: np.ndarray = get_fft_db(img_pad)
     ffts.append(fft)
 
     # Line trace
-    radius, mean_trace, min_trace = radial_line_trace(fft, FFT_SIZE)
+    radius, mean_trace, min_trace = radial_line_trace(fft, (FFT_SIZE, FFT_SIZE))
 
     line_plot_radii.append(radius)
     line_plot_mean_trace.append(mean_trace)
@@ -405,7 +419,7 @@ def aperture_psf_depth(idx: int) -> None:
         psf_ax.axis("off")
 
         # FFT
-        img_pad: np.ndarray = pad_image(img_crop, FFT_SIZE)
+        img_pad: np.ndarray = pad_image(img_crop, (FFT_SIZE, FFT_SIZE))
 
         fft: np.ndarray = get_fft_db(img_pad)
         ffts.append(fft)
@@ -541,7 +555,7 @@ def compute_contrast_and_mtf(idx: int) -> None:
     angle_count = 360 * angle_resolution
     max_radius = 1500
 
-    img_padded = pad_image(img, STAR_PAD_SIZE, 32)
+    img_padded = pad_image(img, (STAR_PAD_SIZE, STAR_PAD_SIZE), 32)
 
     polar = cv2.warpPolar(  # pylint: disable=no-member
         img_padded,
@@ -590,14 +604,15 @@ def compute_contrast_and_mtf(idx: int) -> None:
         dpi=300,
         bbox_inches="tight"
     )
+    plt.close(fig)
 
     # --------------------
     # Calculate MTF
     # --------------------
 
-    n: int = 64 # Spoke count
+    N: int = 64 # pylint: disable=invalid-name
     r = np.arange(radius) # Radii
-    frequency = n / (2 * np.pi * r)
+    frequency = N / (2 * np.pi * r)
     mtf = get_average_contrast_per_radius(polar, radius)
     mtf_norm = mtf / 0.1
     fig, ax = plt.subplots(figsize=(16, 9))
@@ -613,6 +628,180 @@ def compute_contrast_and_mtf(idx: int) -> None:
         dpi=300,
         bbox_inches="tight"
     )
+    plt.close(fig)
+
+def deconvole(idx: int) -> None:
+    """Part 8, Deconvolve using calculated PSF"""
+
+    raw_star_path: str = f"Lab3/mtf/mtf_{APERTURE_NAMES[idx]}.dng"
+    raw_star: np.ndarray =  utils.read_raw(raw_star_path)
+    star: np.ndarray = process_raw(raw_star)
+
+    raw_psf_path: str = f"{APERTURE_FOLDER_NAMES[idx]}/0.dng"
+    raw_psf: np.ndarray =  utils.read_raw(raw_psf_path)
+    psf: np.ndarray = process_raw(raw_psf)
+    psf_crop: np.ndarray = crop_from_brightest(psf, PSF_SIZE)
+    psf_padded: np.ndarray =  pad_image(psf_crop, star.shape)
+    # Normalise PSF so that its total energy is 1
+    psf_norm: np.ndarray = psf / np.sum(psf_padded)
+
+    H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+    G = np.fft.fft2(star) # pylint: disable=invalid-name
+
+    # --------------------
+    # Wiener
+    # --------------------
+    K_vals: np.ndarray = np.logspace(-6, np.log10(5e-1), 30) # pylint: disable=invalid-name
+    laplacian_vars: list[float] = []
+
+    for K in K_vals: # pylint: disable=invalid-name
+        W = np.conj(H) / (np.abs(H)**2 + K) # pylint: disable=invalid-name
+        F_hat = W * G # pylint: disable=invalid-name
+
+        X_hat = np.real(np.fft.ifft2(F_hat)) # pylint: disable=invalid-name
+
+        # Variance of Laplacian
+        laplacian = cv2.Laplacian(X_hat, cv2.CV_64F) # pylint: disable=no-member
+        variance = laplacian.var()
+
+        laplacian_vars.append(variance)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.semilogx(K_vals, laplacian_vars, 'o-')
+    ax.set_xlabel("K")
+    ax.set_ylabel("Variance of Laplacian")
+    ax.set_title("Reconstruction quality vs Wiener regularisation")
+    ax.grid()
+
+    fig.savefig(
+        f"{NATURAL_FOLDERS[idx]}_laplace.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.close(fig)
+
+    best_K = K_vals[np.argmax(laplacian_vars)] # pylint: disable=invalid-name
+
+    # Create "best"
+    W = np.conj(H) / (np.abs(H)**2 + best_K) # pylint: disable=invalid-name
+    F_hat = W * G                            # pylint: disable=invalid-name
+
+    X_hat = np.real(np.fft.ifft2(F_hat))     # pylint: disable=invalid-name
+
+    utils.save_image(X_hat, f"{NATURAL_FOLDERS[idx]}_best_star", "", "gray")
+
+    # Create less-distorted
+    alt_K = 5e-2                           # pylint: disable=invalid-name
+    W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
+    F_hat = W * G                           # pylint: disable=invalid-name
+
+    X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    utils.save_image(X_hat, f"{NATURAL_FOLDERS[idx]}_alt_star", "", "gray")
+
+    # --------------------
+    # Natural Image
+    # --------------------
+
+    for i in range(3):
+        raw_path: str = f"{NATURAL_FOLDERS[idx]}/{i}.dng"
+        raw: np.ndarray =  utils.read_raw(raw_path)
+        img: np.ndarray = process_raw(raw)
+
+        utils.save_image(img, f"{i}_original", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
+
+        W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
+        G = np.fft.fft2(img)                    # pylint: disable=invalid-name
+        F_hat = W * G                           # pylint: disable=invalid-name
+        X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+        utils.save_image(X_hat, f"{i}_deconvoluted", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
+    # --------------------
+    # Gold Standard
+    # --------------------
+
+    # Only proceed for Levin or Nayar
+    if idx == NAYAR_EQUIVALENT:
+        return
+
+    gold_standard_list: list[np.ndarray] = []
+    first_image: np.ndarray
+
+    for i in range(GOLD_STANDARD_COUNT):
+        raw_path: str = f"{NATURAL_FOLDERS[idx]}/cap{i+1}.dng"
+        raw: np.ndarray =  utils.read_raw(raw_path)
+        img: np.ndarray = process_raw(raw)
+
+        gold_standard_list.append(img)
+        if i == 0:
+            first_image = img
+
+    gold_standard_stack: np.ndarray = np.stack(gold_standard_list)
+
+    gold_standard = np.mean(gold_standard_stack, axis=0)
+
+    # --------------------
+    # First frame
+    # --------------------
+
+    G = np.fft.fft2(first_image)            # pylint: disable=invalid-name
+
+    # Standard on first frame
+    F_hat = G / H                           # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    utils.save_image(
+        X_hat,
+        f"Lab3/{APERTURE_NAMES[idx]}_first_frame_standard",
+        "",
+        cmap="gray"
+    )
+
+    # Weiner on first frame
+    W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
+    F_hat = W * G                           # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    utils.save_image(
+        X_hat,
+        f"Lab3/{APERTURE_NAMES[idx]}_first_frame_weiner",
+        "",
+        cmap="gray"
+    )
+
+    # --------------------
+    # Gold Standard
+    # --------------------
+
+    G = np.fft.fft2(gold_standard)          # pylint: disable=invalid-name
+
+    # Standard on gold standard
+    F_hat = G / H                           # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    utils.save_image(
+        X_hat,
+        f"Lab3/{APERTURE_NAMES[idx]}_gold_standard_standard",
+        "",
+        cmap="gray"
+    )
+
+    # Weiner on gold standard
+    W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
+    F_hat = W * G                           # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    utils.save_image(
+        X_hat,
+        f"Lab3/{APERTURE_NAMES[idx]}_gold_standard_weiner",
+        "",
+        cmap="gray"
+    )
+
+
+
+
+
 
 
 # ========================================
@@ -620,6 +809,7 @@ def compute_contrast_and_mtf(idx: int) -> None:
 # ========================================
 
 if __name__ == "__main__":
+
     # --------------------
     # Setup
     # --------------------
@@ -644,4 +834,6 @@ if __name__ == "__main__":
     # compute_contrast_and_mtf(NAYAR_EQUIVALENT)
 
     # Part 8
-    
+    deconvole(LEVIN)
+    deconvole(NAYAR)
+    # deconvole(NAYAR_EQUIVALENT)
