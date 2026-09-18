@@ -28,6 +28,19 @@ P1_FFT_PATH: str = "Lab3/p1_ffts"
 P7_RAW_PATH: str = "Lab3/mtf"
 """Folder path to siemen star raws"""
 
+P9_RAW_PATH: str = "Lab3/part9"
+"""blegh"""
+
+P9_PNG_PATH: str = "Lab3/p9_pngs"
+"""Folder path where to save Part 9 debayered images."""
+
+P9_FFT_PATH: str = "Lab3/p9_ffts"
+"""blupu"""
+
+P9_DECONV_PATH: str = "Lab3/p9_deconvs"
+"""Folder path where to save Part 9 deconvolved images."""
+
+
 CENTRE_NAME: str = "Lab3/arst.png"
 """Name of the centre dngs for Part 2."""
 
@@ -86,7 +99,6 @@ DEPTH_COLORS: list[str] = [
 ]
 """Colours used for plotting different depths"""
 
-
 DESIGNED_PSFS: list[np.ndarray] = [
     np.array([
         [0,0,0,0,0,0,0,0,0,0,0,0,0,],
@@ -125,6 +137,10 @@ THEORETICAL_PSF_SCALES : list[float] = [2.0, 2.0, 1.25]
 
 PSF_SIZE: int = 128
 """Size of psf crop"""
+
+PSF_SIZE_2: int = 256
+"""Size of psf crop for part 9 as it has a better capture"""
+
 
 FFT_SIZE: int = 256
 """Size to pad PSF before applying FFT"""
@@ -691,7 +707,7 @@ def deconvole(idx: int) -> None:
     utils.save_image(X_hat, f"{NATURAL_FOLDERS[idx]}_best_star", "", "gray")
 
     # Create less-distorted
-    alt_K = 5e-2                           # pylint: disable=invalid-name
+    alt_K = 5e-2                            # pylint: disable=invalid-name
     W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
     F_hat = W * G                           # pylint: disable=invalid-name
 
@@ -717,7 +733,7 @@ def deconvole(idx: int) -> None:
 
         utils.save_image(X_hat, f"{i}_deconvoluted", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
     # --------------------
-    # Gold Standard
+    # Gold Standard Load
     # --------------------
 
     # Only proceed for Levin or Nayar
@@ -741,7 +757,7 @@ def deconvole(idx: int) -> None:
     gold_standard = np.mean(gold_standard_stack, axis=0)
 
     # --------------------
-    # First frame
+    # First frame deconvolve
     # --------------------
 
     G = np.fft.fft2(first_image)            # pylint: disable=invalid-name
@@ -770,7 +786,7 @@ def deconvole(idx: int) -> None:
     )
 
     # --------------------
-    # Gold Standard
+    # Gold Standard deconvolve
     # --------------------
 
     G = np.fft.fft2(gold_standard)          # pylint: disable=invalid-name
@@ -798,7 +814,35 @@ def deconvole(idx: int) -> None:
         cmap="gray"
     )
 
+def multiple_depths() -> None:
+    """Part 9"""
+    K = 5e-2 # pylint: disable=invalid-name
+    raw_path: str = f"{P9_RAW_PATH}/scene_cap.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    scene_img: np.ndarray = process_raw(raw)
+    utils.save_image(scene_img, "natural_image", P9_PNG_PATH)
 
+    G = np.fft.fft2(scene_img) # pylint: disable=invalid-name
+
+    for i in range(-2, 3):
+        raw_path: str = f"{P9_RAW_PATH}/{i}.dng"
+        raw: np.ndarray =  utils.read_raw(raw_path)
+        psf: np.ndarray = process_raw(raw)
+
+        psf_crop = crop_from_brightest(psf, PSF_SIZE_2)
+        fft: np.ndarray = get_fft(psf_crop)
+
+        psf_padded: np.ndarray =  pad_image(psf_crop, scene_img.shape)
+        psf_norm: np.ndarray = psf / np.sum(psf_padded)
+        H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+
+        W = np.conj(H) / (np.abs(H)**2 + K)  # pylint: disable=invalid-name
+        F_hat = W * G                        # pylint: disable=invalid-name
+        X_hat = np.real(np.fft.ifft2(F_hat)) # pylint: disable=invalid-name
+
+        utils.save_image(psf_crop, f"{i}", P9_PNG_PATH, "gray")
+        utils.save_image(fft, f"{i}", P9_FFT_PATH, FFT_CMAP)
+        utils.save_image(X_hat, f"{i}", P9_DECONV_PATH, "gray")
 
 
 
@@ -834,6 +878,9 @@ if __name__ == "__main__":
     # compute_contrast_and_mtf(NAYAR_EQUIVALENT)
 
     # Part 8
-    deconvole(LEVIN)
-    deconvole(NAYAR)
+    # deconvole(LEVIN)
+    # deconvole(NAYAR)
     # deconvole(NAYAR_EQUIVALENT)
+
+    # Part 9
+    multiple_depths()
