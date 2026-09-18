@@ -2,12 +2,12 @@
 lab.py
 
 Lab 3 code
-
 """
 
 import utils
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from scipy.ndimage import gaussian_filter
 from scipy.signal import find_peaks
 import cv2
@@ -40,6 +40,26 @@ P9_FFT_PATH: str = "Lab3/p9_ffts"
 P9_DECONV_PATH: str = "Lab3/p9_deconvs"
 """Folder path where to save Part 9 deconvolved images."""
 
+BONUS_RAW_PATH: str = "Lab3/bonus"
+"""Path to bonus images"""
+
+BONUS_PNG_PATH: str = "Lab3/bonus"
+"""Path to bonus images"""
+
+MONOCHROME_CMAPS = [
+    LinearSegmentedColormap.from_list(
+        "red",
+        [(0, 0, 0), (1, 0, 0)]
+    ),
+    LinearSegmentedColormap.from_list(
+        "green",
+        [(0, 0, 0), (0, 1, 0)]
+    ),
+    LinearSegmentedColormap.from_list(
+        "blue",
+        [(0, 0, 0), (0, 0, 1)]
+    ),
+]
 
 CENTRE_NAME: str = "Lab3/arst.png"
 """Name of the centre dngs for Part 2."""
@@ -178,16 +198,17 @@ NATURAL_FOLDERS: list[str] = [
 # Lab helpers
 # ========================================
 
-def process_raw(raw: np.ndarray) -> np.ndarray:
+def process_raw(raw: np.ndarray, greyscale: bool = True) -> np.ndarray:
     """Takes in a raw image and returns the black-level removed, 
-    fixed pattern removed, green channel image.
+    fixed pattern removed. Green only if greyscale is True.
     """
     black_removed: np.ndarray = utils.remove_black_level(raw)
     fixed_pattern_removed: np.ndarray = utils.remove_fixed_pattern(black_removed)
     rgb: np.ndarray = utils.debayer_raw(fixed_pattern_removed)
-    green: np.ndarray = rgb[:, :, 1]
+    if greyscale:
+        return rgb[:, :, 1]
 
-    return green
+    return rgb
 
 def get_fft(img: np.ndarray) -> np.ndarray:
     """Returns the FFT of the image."""
@@ -659,7 +680,7 @@ def deconvole(idx: int) -> None:
     psf_crop: np.ndarray = crop_from_brightest(psf, PSF_SIZE)
     psf_padded: np.ndarray =  pad_image(psf_crop, star.shape)
     # Normalise PSF so that its total energy is 1
-    psf_norm: np.ndarray = psf / np.sum(psf_padded)
+    psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
 
     H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
     G = np.fft.fft2(star) # pylint: disable=invalid-name
@@ -704,6 +725,8 @@ def deconvole(idx: int) -> None:
 
     X_hat = np.real(np.fft.ifft2(F_hat))     # pylint: disable=invalid-name
 
+    X_hat = utils.rotate_image(X_hat)        # pylint: disable=invalid-name
+
     utils.save_image(X_hat, f"{NATURAL_FOLDERS[idx]}_best_star", "", "gray")
 
     # Create less-distorted
@@ -712,6 +735,8 @@ def deconvole(idx: int) -> None:
     F_hat = W * G                           # pylint: disable=invalid-name
 
     X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
 
     utils.save_image(X_hat, f"{NATURAL_FOLDERS[idx]}_alt_star", "", "gray")
 
@@ -724,13 +749,16 @@ def deconvole(idx: int) -> None:
         raw: np.ndarray =  utils.read_raw(raw_path)
         img: np.ndarray = process_raw(raw)
 
-        utils.save_image(img, f"{i}_original", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
 
         W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
         G = np.fft.fft2(img)                    # pylint: disable=invalid-name
         F_hat = W * G                           # pylint: disable=invalid-name
         X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
 
+        X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
+        img = utils.rotate_image(img)
+
+        utils.save_image(img, f"{i}_original", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
         utils.save_image(X_hat, f"{i}_deconvoluted", f"{NATURAL_FOLDERS[idx]}_wiener", cmap="gray")
     # --------------------
     # Gold Standard Load
@@ -766,6 +794,8 @@ def deconvole(idx: int) -> None:
     F_hat = G / H                           # pylint: disable=invalid-name
     X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
 
+    X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
+
     utils.save_image(
         X_hat,
         f"Lab3/{APERTURE_NAMES[idx]}_first_frame_standard",
@@ -777,6 +807,8 @@ def deconvole(idx: int) -> None:
     W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
     F_hat = W * G                           # pylint: disable=invalid-name
     X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
 
     utils.save_image(
         X_hat,
@@ -795,6 +827,8 @@ def deconvole(idx: int) -> None:
     F_hat = G / H                           # pylint: disable=invalid-name
     X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
 
+    X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
+
     utils.save_image(
         X_hat,
         f"Lab3/{APERTURE_NAMES[idx]}_gold_standard_standard",
@@ -806,6 +840,8 @@ def deconvole(idx: int) -> None:
     W = np.conj(H) / (np.abs(H)**2 + alt_K) # pylint: disable=invalid-name
     F_hat = W * G                           # pylint: disable=invalid-name
     X_hat = np.real(np.fft.ifft2(F_hat))    # pylint: disable=invalid-name
+
+    X_hat = utils.rotate_image(X_hat)       # pylint: disable=invalid-name
 
     utils.save_image(
         X_hat,
@@ -820,7 +856,6 @@ def multiple_depths() -> None:
     raw_path: str = f"{P9_RAW_PATH}/scene_cap.dng"
     raw: np.ndarray =  utils.read_raw(raw_path)
     scene_img: np.ndarray = process_raw(raw)
-    utils.save_image(scene_img, "natural_image", P9_PNG_PATH)
 
     G = np.fft.fft2(scene_img) # pylint: disable=invalid-name
 
@@ -833,20 +868,242 @@ def multiple_depths() -> None:
         fft: np.ndarray = get_fft(psf_crop)
 
         psf_padded: np.ndarray =  pad_image(psf_crop, scene_img.shape)
-        psf_norm: np.ndarray = psf / np.sum(psf_padded)
+        psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
         H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
 
         W = np.conj(H) / (np.abs(H)**2 + K)  # pylint: disable=invalid-name
         F_hat = W * G                        # pylint: disable=invalid-name
         X_hat = np.real(np.fft.ifft2(F_hat)) # pylint: disable=invalid-name
 
+        X_hat = utils.rotate_image(X_hat)
+
         utils.save_image(psf_crop, f"{i}", P9_PNG_PATH, "gray")
         utils.save_image(fft, f"{i}", P9_FFT_PATH, FFT_CMAP)
         utils.save_image(X_hat, f"{i}", P9_DECONV_PATH, "gray")
 
+    scene_img = utils.rotate_image(scene_img)
 
+    utils.save_image(scene_img, "natural_image", P9_PNG_PATH, "gray")
 
+def angled_aperture() -> None:
+    """Bonus 1"""
 
+    # Natural scene
+    raw_path: str = f"{BONUS_RAW_PATH}/nat.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    nat: np.ndarray = process_raw(raw)
+
+    G = np.fft.fft2(nat)          # pylint: disable=invalid-name
+
+    # PSF capture
+    raw_path: str = f"{BONUS_RAW_PATH}/psf.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    psf: np.ndarray = process_raw(raw)
+
+    psf_crop = crop_from_brightest(psf, PSF_SIZE)
+    fft: np.ndarray = get_fft(psf_crop)
+
+    psf_padded: np.ndarray =  pad_image(psf_crop, nat.shape)
+    psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
+    K = 5e-2                                               # pylint: disable=invalid-name
+    H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+    W = np.conj(H) / (np.abs(H)**2 + K)                    # pylint: disable=invalid-name
+    F_hat = W * G                                          # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))                   # pylint: disable=invalid-name
+
+    # Rotate images
+    nat = utils.rotate_image(nat)
+    X_hat = utils.rotate_image(X_hat)
+
+    utils.save_image(nat, "nat", BONUS_PNG_PATH, cmap="gray")
+    utils.save_image(psf_crop, "psf", BONUS_PNG_PATH, cmap="gray")
+    utils.save_image(fft, "fft", BONUS_PNG_PATH, cmap=FFT_CMAP)
+    utils.save_image(X_hat, "dec", BONUS_PNG_PATH, cmap="gray")
+
+def straight_aperture() -> None:
+    """Bonus 1, ok I stopped caring I just need it to work now"""
+
+    # Natural scene
+    raw_path: str = "Lab3/nat_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    nat: np.ndarray = process_raw(raw)
+
+    G = np.fft.fft2(nat) # pylint: disable=invalid-name
+
+    # PSF capture
+    raw_path: str = "Lab3/psf_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    psf: np.ndarray = process_raw(raw)
+
+    psf_crop = crop_from_brightest(psf, PSF_SIZE)
+    fft: np.ndarray = get_fft(psf_crop)
+
+    psf_padded: np.ndarray =  pad_image(psf_crop, nat.shape)
+    psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
+    K = 5e-2                                               # pylint: disable=invalid-name
+    H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+    W = np.conj(H) / (np.abs(H)**2 + K)                    # pylint: disable=invalid-name
+    F_hat = W * G                                          # pylint: disable=invalid-name
+    X_hat = np.real(np.fft.ifft2(F_hat))                   # pylint: disable=invalid-name
+
+    # Rotate images
+    nat = utils.rotate_image(nat)
+    X_hat = utils.rotate_image(X_hat)
+
+    utils.save_image(nat, "nat_straight", BONUS_PNG_PATH, cmap="gray")
+    utils.save_image(psf_crop, "psf_straight", BONUS_PNG_PATH, cmap="gray")
+    utils.save_image(fft, "fft_straight", BONUS_PNG_PATH, cmap=FFT_CMAP)
+    utils.save_image(X_hat, "dec_straight", BONUS_PNG_PATH, cmap="gray")
+
+def chromatics_green_all() -> np.ndarray:
+    """Bonus 2"""
+
+    # Natural scene
+    raw_path: str = "Lab3/nat_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    nat_color: np.ndarray = process_raw(raw, greyscale=False)
+    nat_min = nat_color.min()
+    nat_max = nat_color.max()
+    nat_color = (nat_color - nat_min) / (nat_max - nat_min)
+
+    raw_path: str = "Lab3/psf_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    psf: np.ndarray = process_raw(raw)
+    psf_crop = crop_from_brightest(psf, PSF_SIZE_2)
+    psf_padded: np.ndarray =  pad_image(psf_crop, nat_color[:,:,0].shape)
+    psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
+    K = 5e-2                                               # pylint: disable=invalid-name
+    H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+
+    channels: list[np.ndarray] = []
+
+    for i in range(3):
+        nat = nat_color[:,:,i]
+
+        G = np.fft.fft2(nat) # pylint: disable=invalid-name
+
+        W = np.conj(H) / (np.abs(H)**2 + K)                    # pylint: disable=invalid-name
+        F_hat = W * G                                          # pylint: disable=invalid-name
+        X_hat = np.real(np.fft.ifft2(F_hat))                   # pylint: disable=invalid-name
+
+        channels.append(X_hat)
+
+    # Merge into rgb
+    rgb = np.stack(channels, axis=2)
+    rgb = np.clip(rgb / rgb.max(), 0.0, 1.0)
+
+    # Rotate images 
+    rgb = utils.rotate_image(rgb)
+
+    plt.imsave(f"{BONUS_PNG_PATH}/dec_color_bad.png", rgb)
+
+    return rgb
+
+def chromatics_per_channel() -> np.ndarray:
+    """Bonus 2"""
+
+    # Natural scene
+    raw_path: str = "Lab3/nat_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    nat_color: np.ndarray = process_raw(raw, greyscale=False)
+    nat_min = nat_color.min()
+    nat_max = nat_color.max()
+    nat_color = (nat_color - nat_min) / (nat_max - nat_min)
+
+    raw_path: str = "Lab3/psf_levin/0.dng"
+    raw: np.ndarray =  utils.read_raw(raw_path)
+    psf_color: np.ndarray = process_raw(raw, greyscale=False)
+
+    K = 5e-2 # pylint: disable=invalid-name
+
+    channels: list[np.ndarray] = []
+
+    for i, color_name in enumerate(["red","green","blue"]):
+        nat = nat_color[:,:,i]
+        psf = psf_color[:,:,i]
+
+        G = np.fft.fft2(nat) # pylint: disable=invalid-name
+
+        # PSF capture
+
+        psf_crop = crop_from_brightest(psf, PSF_SIZE_2)
+        fft: np.ndarray = get_fft(psf_crop)
+
+        psf_padded: np.ndarray =  pad_image(psf_crop, nat.shape)
+        psf_norm: np.ndarray = psf_padded / np.sum(psf_padded)
+        H: np.ndarray = np.fft.fft2(np.fft.fftshift(psf_norm)) # pylint: disable=invalid-name
+        W = np.conj(H) / (np.abs(H)**2 + K)                    # pylint: disable=invalid-name
+        F_hat = W * G                                          # pylint: disable=invalid-name
+        X_hat = np.real(np.fft.ifft2(F_hat))                   # pylint: disable=invalid-name
+
+        channels.append(X_hat)
+
+        utils.save_image(psf_crop, f"psf_{color_name}", BONUS_PNG_PATH, cmap=MONOCHROME_CMAPS[i])
+        utils.save_image(fft, f"fft_{color_name}", BONUS_PNG_PATH, cmap=FFT_CMAP)
+
+    # Merge into rgb
+    rgb = np.stack(channels, axis=2)
+    rgb = np.clip(rgb / rgb.max(), 0.0, 1.0)
+    
+    # Rotate images 
+    rgb = utils.rotate_image(rgb)
+    nat_color = utils.rotate_image(nat_color)
+
+    plt.imsave(f"{BONUS_PNG_PATH}/dec_color.png", rgb)
+    plt.imsave(f"{BONUS_PNG_PATH}/nat_color.png", nat_color)
+
+    return rgb
+def show_diff(rgb: np.ndarray, green: np.ndarray) -> None:
+    """Display the difference between the two methods."""
+
+    diff = np.mean(np.abs(green - rgb), axis=2)
+
+    # Exclude 64-pixel border when finding maximum difference
+    margin = 64
+    search_diff = diff.copy()
+    search_diff[:margin, :] = -np.inf
+    search_diff[-margin:, :] = -np.inf
+    search_diff[:, :margin] = -np.inf
+    search_diff[:, -margin:] = -np.inf
+
+    # Find largest difference within the valid region
+    y, x = np.unravel_index(np.argmax(search_diff), search_diff.shape) # pylint: disable=unbalanced-tuple-unpacking
+
+    print("Maximum difference:", diff[y, x])
+    print("Location:", x, y)
+
+    crop_size = 256
+
+    x1 = max(0, x - crop_size // 2)
+    x2 = min(diff.shape[1], x + crop_size // 2)
+
+    y1 = max(0, y - crop_size // 2)
+    y2 = min(diff.shape[0], y + crop_size // 2)
+
+    crop_green = green[y1:y2, x1:x2]
+    crop_rgb = rgb[y1:y2, x1:x2]
+    crop_diff = diff[y1:y2, x1:x2]
+
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+
+    ax[0].imshow(crop_green)
+    ax[0].set_title("Green PSF for all channels")
+    ax[0].axis("off")
+
+    ax[1].imshow(crop_rgb)
+    ax[1].set_title("Individual PSFs for each channel")
+    ax[1].axis("off")
+
+    ax[2].imshow(crop_diff, cmap=FFT_CMAP)
+    ax[2].set_title("Absolute difference")
+    ax[2].axis("off")
+
+    fig.savefig(
+        f"{BONUS_PNG_PATH}/dec_color_compare.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.close(fig)
 
 # ========================================
 # Main
@@ -878,9 +1135,18 @@ if __name__ == "__main__":
     # compute_contrast_and_mtf(NAYAR_EQUIVALENT)
 
     # Part 8
-    # deconvole(LEVIN)
-    # deconvole(NAYAR)
-    # deconvole(NAYAR_EQUIVALENT)
+    deconvole(LEVIN)
+    deconvole(NAYAR)
+    deconvole(NAYAR_EQUIVALENT)
 
     # Part 9
-    multiple_depths()
+    # multiple_depths()
+
+    # Bonus 1
+    # angled_aperture()
+    # straight_aperture()
+
+    # Bonus 2
+    # green_dec = chromatics_per_channel()
+    # rgb_dec = chromatics_green_all()
+    # show_diff(rgb_dec, green_dec)
