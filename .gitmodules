@@ -1,3 +1,6 @@
 [submodule "example"]
 	path = example
 	url = git@github.com:RoboticImaging/mech5720.git
+[submodule "Lab4/DiffuserCam"]
+	path = Lab4/DiffuserCam
+	url = git@github.com:Waller-Lab/DiffuserCam-Tutorial.git
