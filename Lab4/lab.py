@@ -8,6 +8,7 @@ import utils
 import yaml
 import numpy as np
 from matplotlib import pyplot as plt
+from ADMM import reconstruct_image
 
 # 24 mm diameter
 
