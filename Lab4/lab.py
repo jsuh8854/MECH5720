@@ -5,7 +5,6 @@ Lab 4
 import os
 from PIL import Image
 import utils
-import yaml
 import numpy as np
 from matplotlib import pyplot as plt
 from ADMM import reconstruct_image
@@ -33,11 +32,12 @@ def get_autocorrelation_from_fft(fft: np.ndarray) -> np.ndarray:
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    # Part 1
+
     psf = Image.open("psf_sample.tif")
     plt.imshow(psf, cmap="gray")
     plt.show()
-
-    # psf = np.fft.fftshift(psf)
 
     ac = get_autocorrelation(psf)
     plt.imshow(np.fft.fftshift(ac), cmap="gray")
