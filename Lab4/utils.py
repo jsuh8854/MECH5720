@@ -98,22 +98,42 @@ def white_balance_rgb(rgb: np.ndarray, p: float = 4.0) -> np.ndarray:
 
     return balanced
 
+def read_and_process_raw(filename: str) -> np.ndarray:
+    """
+    Reads and process raw image,
+    debayering, extracting green pixel,
+    normalised from [0, 1] off the sensor max value,
+    and rotated to face the correct direction.
+    """
+    raw = read_raw(filename)
+    debayer = debayer_raw(raw)
+    green = debayer[:,:,1]
+
+    return green  #rotate_image(green)
+
 def debayer_raw(raw: np.ndarray) -> np.ndarray:
-    """Convert raw DNG into a float32 debayered RGB image."""
+    """Convert raw DNG into a normalised debayered RGB image."""
     raw = np.asarray(raw, dtype=np.int16, order="C")
     raw = np.clip(raw, 0, np.iinfo(np.uint16).max).astype(np.uint16)
 
     rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB)  # pylint: disable=no-member
     rgb = rgb16.astype(np.float32)
 
-    return rgb
+    if np.max(rgb) >= MAX_PIXEL - 8:
+        print("SATURATION!!!")
+
+    rgb_norm = rgb / MAX_PIXEL
+
+    return rgb_norm
 
 def read_raw(filename: str) -> np.ndarray:
     """Reads the DNG file and returns as an np.ndarray."""
     try:
         # Load and view the raw bayer image
         with rawpy.imread(filename) as raw:
-            return np.array(raw.raw_image, dtype=np.int16, copy=True, order="C")
+            mosaic = raw.raw_image.copy()
+
+        return np.asarray(mosaic, dtype=np.uint16)
 
     except FileNotFoundError as e:
         print(f"Error loading {filename}: {e}")

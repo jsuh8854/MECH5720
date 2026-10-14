@@ -107,7 +107,7 @@ def pad_sensor_data(data, full_size, sensor_size):
     return np.pad(
         data,
         ((vertical_pad, vertical_pad),
-         (horizontal_pad, horizontal_pad)),
+        (horizontal_pad, horizontal_pad)),
         mode="constant",
     )
 
@@ -359,7 +359,6 @@ def admm_step(
 
     return x, u, v, w, xi, eta, rho
 
-
 def run_admm(
     psf,
     data,
@@ -368,41 +367,32 @@ def run_admm(
     mu2,
     mu3,
     iters,
-    display_interval,
+    display_interval=None,
+    snapshots=(5, 20, 100, 300),
 ):
-    """Run the ADMM reconstruction."""
+    """Run the ADMM reconstruction.
+
+    Returns a dict {iteration_count: image}. A snapshot is stored after
+    each iteration count in `snapshots`, plus one for the final iteration.
+    The loop runs to max(iters, max(snapshots)).
+    """
+
+    snapshots = sorted(set(snapshots)) if snapshots else []
+    if snapshots:
+        iters = max(iters, snapshots[-1])
 
     sensor_size = np.array(psf.shape)
     full_size = 2 * sensor_size
 
-    psf_fft = precompute_psf_fft(
-        psf,
-        full_size,
-        sensor_size,
-    )
-
-    x_division = precompute_x_division(
-        mu1,
-        full_size,
-        sensor_size,
-    )
-
-    gradient_transpose_gradient = (
-        precompute_gradient_transpose_gradient(full_size)
-    )
-
+    psf_fft = precompute_psf_fft(psf, full_size, sensor_size)
+    x_division = precompute_x_division(mu1, full_size, sensor_size)
+    gradient_transpose_gradient = precompute_gradient_transpose_gradient(full_size)
     r_division = precompute_r_division(
-        psf_fft,
-        gradient_transpose_gradient,
-        mu1,
-        mu2,
-        mu3,
+        psf_fft, gradient_transpose_gradient, mu1, mu2, mu3,
     )
+    variables = initialise_variables(psf_fft, full_size)
 
-    variables = initialise_variables(
-        psf_fft,
-        full_size,
-    )
+    results = {}
 
     for iteration in range(iters):
 
@@ -416,47 +406,38 @@ def run_admm(
             mu1, mu2, mu3,
         )
 
-        if iteration % display_interval == 0:
+        count = iteration + 1  # iterations completed so far
+
+        if count in snapshots or count == iters:
             _, _, v, _, _, _, _ = variables
+            results[count] = crop_sensor_region(
+                np.maximum(v, 0), full_size, sensor_size,
+            ).copy()
+            print(f"Stored snapshot at iteration {count}")
 
-            image = crop_sensor_region(
-                v,
-                full_size,
-                sensor_size,
+        if display_interval and iteration % display_interval == 0:
+            _, _, v, _, _, _, _ = variables
+            image = np.maximum(
+                crop_sensor_region(v, full_size, sensor_size), 0,
             )
-
-            image = np.maximum(image, 0)
-
-            print(f"Iteration {iteration}")
-
             fig = plt.figure()
             plt.imshow(image, cmap="gray")
-            plt.title(
-                f"Reconstruction after iteration {iteration}"
-            )
+            plt.title(f"Reconstruction after iteration {iteration}")
             plt.axis("off")
             plt.show()
             plt.close(fig)
 
-    _, _, v, _, _, _, _ = variables
-
-    return crop_sensor_region(
-        np.maximum(v, 0),
-        full_size,
-        sensor_size,
-    )
-
+    return results
 
 def reconstruct_image(
     psf,
     raw_image,
     config_filename="admm_config.yml",
+    snapshots=(5, 20, 100, 300),
+    tau=None,
+    display=False,
 ):
-    """Reconstruct an image from preprocessed PSF and raw-image arrays.
-
-    The input arrays are passed directly to the ADMM solver without any
-    background subtraction, downsampling, or normalization.
-    """
+    """Returns a dict {iteration_count: image}."""
 
     with open(config_filename, "r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
@@ -464,12 +445,13 @@ def reconstruct_image(
     return run_admm(
         psf,
         raw_image,
-        config["tau"],
+        config["tau"] if tau is None else tau,
         config["mu1"],
         config["mu2"],
         config["mu3"],
         config["iters"],
-        config["disp_pic"],
+        config["disp_pic"] if display else None,
+        snapshots,
     )
 
 def example():
