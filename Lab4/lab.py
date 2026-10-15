@@ -8,8 +8,8 @@ import utils
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.signal import fftconvolve, windows
-from scipy.ndimage import median_filter, gaussian_filter
-from ADMM import reconstruct_image, downsample, gradient
+from scipy.ndimage import median_filter, zoom
+from ADMM import reconstruct_image, reconstruct_two_plane, downsample, gradient
 
 
 # 24 mm diameter
@@ -24,16 +24,20 @@ from ADMM import reconstruct_image, downsample, gradient
 PART_1_FOLDER: str = "part1"
 PART_2_FOLDER: str = "part2"
 PART_3_FOLDER: str = "part3"
+PART_6_FOLDER: str = "part6"
 
 PART_3_IMAGE_COUNT: int = 8
+PART_6_IMAGE_COUNT: int = 16
 
 ADMM_SNAPSHOTS = (5, 20, 100, 300, 600)
+BEST_TAU: float = 1e-8
 
 PART_1_OUT: str = "part1_out"
 PART_2_OUT: str = "part2_out"
 PART_3_OUT: str = "part3_out"
 PART_4_OUT: str = "part4_out"
 PART_5_OUT: str = "part5_out"
+PART_6_OUT: str = "part6_out"
 
 # ===================================
 # Functions yippie
@@ -187,6 +191,7 @@ def get_autocorrelation_from_fft(fft: np.ndarray) -> np.ndarray:
         ac = ac / max_val
 
     return ac
+
 def get_radial_profile(autocorr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Return radii and angle averaged intensity of a 2D autocorrelation.
@@ -225,8 +230,9 @@ def prepare_data(img: np.ndarray) -> np.ndarray:
     return data_d / np.linalg.norm(data_d)
 
 
-def run_and_save_admm(name, data_d, psf_used, tau, snapshots=ADMM_SNAPSHOTS):
-    """Run ADMM once, save and show the snapshot series for this tau."""
+def run_and_save_admm(name, data_d, psf_used, tau, snapshots=ADMM_SNAPSHOTS, save_path=PART_5_OUT):
+    """Run ADMM once, save and show the snapshot series for this tau,
+    and save the final reconstruction on its own to compare with bonus."""
     recons = reconstruct_image(psf_used, data_d, tau=tau, snapshots=snapshots)
 
     tau_str = f"{tau:.0e}".replace("-", "m").replace("+", "p")   # 1e-07 -> 1em07
@@ -245,9 +251,16 @@ def run_and_save_admm(name, data_d, psf_used, tau, snapshots=ADMM_SNAPSHOTS):
 
     fig.suptitle(f"{name}: tau = {tau:.1e}")
     fig.tight_layout()
-    fig.savefig(f"{PART_5_OUT}/admm_{name.lower()}_tau_{tau_str}.png")
-    # plt.show()
+    fig.savefig(f"{save_path}/admm_{name.lower()}_tau_{tau_str}.png")
     plt.close(fig)
+
+    # Final reconstruction on its own, bare image at native resolution
+    final_img = recons[max(recons)]
+    plt.imsave(
+        f"{save_path}/admm_{name.lower()}_tau_{tau_str}_final.png",
+        utils.rotate_image(final_img), cmap="gray",
+        vmin=0, vmax=np.percentile(final_img, 99.5),
+    )
 
     return recons
 
@@ -289,6 +302,37 @@ def wiener_deconvolve(psf_d, data_d, k_rel, taper_a=0.2):
     X = np.fft.fftshift(X)
 
     return X[h // 2:h // 2 + h, w // 2:w // 2 + w]   # crop back to sensor size
+
+def rescale_about_centre(img: np.ndarray, s: float) -> np.ndarray:
+    """Resize img by factor s about its centre, keeping the same array shape."""
+    z = zoom(img, s, order=1)
+    h, w = img.shape
+    out = np.zeros_like(img)
+    zh, zw = z.shape
+
+    # Centre crop (s > 1) or centre pad (s < 1)
+    sy, sx = max((zh - h) // 2, 0), max((zw - w) // 2, 0)
+    dy, dx = max((h - zh) // 2, 0), max((w - zw) // 2, 0)
+    ch, cw = min(h, zh), min(w, zw)
+    out[dy:dy + ch, dx:dx + cw] = z[sy:sy + ch, sx:sx + cw]
+    return out
+
+def ncc_peak(a: np.ndarray, b: np.ndarray) -> float:
+    """Peak of the normalised cross-correlation (shift-tolerant, DC removed)."""
+    a = a - a.mean()
+    b = b - b.mean()
+    corr = np.real(np.fft.ifft2(np.fft.fft2(a) * np.conj(np.fft.fft2(b))))
+    return corr.max() / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12)
+
+def estimate_scale(ref: np.ndarray, other: np.ndarray, lo=0.5, hi=2.0) -> float:
+    """Scale s such that rescale(ref, s) best matches other. Coarse-to-fine search."""
+    scales = np.geomspace(lo, hi, 41)
+    for _ in range(3):
+        scores = [ncc_peak(rescale_about_centre(ref, s), other) for s in scales]
+        best = scales[int(np.argmax(scores))]
+        step = scales[1] / scales[0]
+        scales = np.geomspace(best / step, best * step, 21)   # zoom in around best
+    return float(best)
 
 # ===================================
 # Sections
@@ -352,7 +396,6 @@ def part_5_tau_sweep(
     for tau in taus:
         run_and_save_admm("Star", data_d, psf_d, tau)
 
-
 def part_5_best_tau(
     psf: np.ndarray,
     star: np.ndarray,
@@ -366,6 +409,76 @@ def part_5_best_tau(
 
     run_and_save_admm("Rotated", prepare_data(star), psf_rot, best_tau)
     run_and_save_admm("Natural", prepare_data(natural), psf_d, best_tau)
+
+def part_6_psf_scale(psfs, distances):
+    """Scale of near/far PSFs relative to the working PSF, plotted vs 1/z.
+
+    psfs: (psf_near, psf_work, psf_far); distances: (z_near, z_work, z_far).
+    """
+    psf_near, psf_work, psf_far = psfs[0], psfs[1], psfs[2]
+    z = np.asarray(distances, dtype=float)
+
+    ref = prepare_psf(psf_work)          # change prep's factor to 1/2 for more precision
+    scales = np.array([
+        estimate_scale(ref, prepare_psf(psf_near), lo=0.97, hi=1.03),
+        1.0,
+        estimate_scale(ref, prepare_psf(psf_far), lo=0.97, hi=1.03),
+    ])
+    inv_z = 1.0 / z
+
+    # scale = slope * (1/z) + intercept, with d = slope / intercept
+    slope, intercept = np.polyfit(inv_z, scales, 1)
+    d_est = slope / intercept
+    print(f"scales={scales}, d ≈ slope/intercept = {d_est:.3g} (units of z)")
+
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    ax.plot(inv_z, scales, "o", label="measured")
+    for x, y, name in zip(inv_z, scales, ("near", "working", "far")):
+        ax.annotate(name, (x, y), textcoords="offset points", xytext=(6, 6))
+
+    xs = np.linspace(0, inv_z.max() * 1.1, 50)
+    ax.plot(xs, slope * xs + intercept, "k:",
+            label=f"fit: {slope:.3g} / z + {intercept:.4f}\nd = {d_est:.3g}")
+
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Inverse distance 1/z")
+    ax.set_ylabel("PSF scale relative to working PSF")
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(f"{PART_6_OUT}/scale_vs_inverse_distance.png", dpi=200)
+    plt.close(fig)
+
+def part_6_reconstruct(scene_d, psfs, psf_types, tau=BEST_TAU):
+    """
+    Reconstructions of the two-depth scene with each PSF.
+    """
+
+    for psf, name in zip(psfs, psf_types):
+        psf_d = prepare_psf(psf)
+        run_and_save_admm(name, scene_d, psf_d, tau, save_path=PART_6_OUT)
+
+def bonus_joint(psfs, scene_d, tau=BEST_TAU, snapshots=ADMM_SNAPSHOTS):
+    """Bonus: joint two-plane reconstruction of the two-depth scene.
+    """
+    psf_near_d = prepare_psf(psfs[0])
+    psf_far_d = prepare_psf(psfs[2])
+
+    joint = reconstruct_two_plane(
+        psf_near_d, psf_far_d, scene_d, tau=tau, snapshots=snapshots,
+    )
+
+    final = max(joint)  # last stored iteration, to compare with the single-PSF runs
+    near_img, far_img = joint[final]
+
+    for label, img in (("near", near_img), ("far", far_img)):
+        plt.imsave(
+            f"{PART_6_OUT}/joint_{label}.png",
+            utils.rotate_image(img), cmap="gray",
+            vmin=0, vmax=np.percentile(img, 99.5),
+        )
+
+    return near_img, far_img
 
 def part_1():
     """Part 1"""
@@ -555,8 +668,85 @@ def part_3():
 
     # part_5_tau_sweep(psf, star)
 
-    # best_tau = 1e-8
-    # part_5_best_tau(psf, star, natural, best_tau)
+    # part_5_best_tau(psf, star, natural, BEST_TAU)
+
+def part_6():
+    """Part 6"""
+    psf_types = ["close", "same", "far"]
+    x_pos = [694, 799, 829]
+    y_pos = [521, 518, 517]
+
+    psfs = []
+    raw_psfs = []
+
+    for psf_type, x, y in zip(psf_types, x_pos, y_pos):
+        ambient = np.mean([
+            utils.read_and_process_raw(
+                f"{PART_6_FOLDER}/{psf_type}/ambient_{i}.dng"
+            ).astype(np.float32)
+            for i in range(PART_6_IMAGE_COUNT)
+        ], axis=0)
+
+        psf = np.mean([
+            utils.read_and_process_raw(
+                f"{PART_6_FOLDER}/{psf_type}/psf_{i}.dng"
+            ).astype(np.float32)
+            for i in range(PART_6_IMAGE_COUNT)
+        ], axis=0) - ambient
+
+        psf = np.maximum(psf, 0)
+
+        # plt.imshow(psf)
+        # plt.show()
+
+        psf_crop = crop_and_pad_psf(psf, x, y, 1080)
+        psf_crop /= psf_crop.sum()
+
+        _, hi = np.percentile(psf_crop, [1, 99])
+        plt.imsave(
+            f"{PART_6_OUT}/{psf_type}_psf.png",
+            utils.rotate_image(psf_crop), vmin=0, vmax=hi, cmap="gray"
+        )
+
+        psfs.append(psf_crop)
+        raw_psfs.append(psf / psf.sum())
+
+    # Fixed pattern at the scene exposure
+    fixed_pattern = np.mean([
+        utils.read_and_process_raw(
+            f"{PART_3_FOLDER}/fixed_pattern/fixed_pattern_{i}.dng"
+        ).astype(np.float32)
+        for i in range(PART_3_IMAGE_COUNT)
+    ], axis=0)
+
+    scene = np.mean([
+        utils.read_and_process_raw(
+            f"{PART_6_FOLDER}/dual_{i}.dng"
+        ).astype(np.float32)
+        for i in range(PART_6_IMAGE_COUNT)
+    ], axis=0) - fixed_pattern
+
+    scene_d = prepare_data(scene)
+
+    # ------------------------------
+    # Scale comparison
+    # -----------------------------
+
+    # part_6_psf_scale(raw_psfs, (130, 300, 690)) # in mm
+
+    # ------------------------------
+    # Reconstruction
+    # -----------------------------
+
+    # part_6_reconstruct(scene_d, psfs, psf_types)
+
+    # ------------------------------
+    # Bonus: Joint two-plane
+    # -----------------------------
+
+    bonus_joint(psfs, scene_d)
+
+
 
 
 if __name__ == "__main__":
@@ -567,10 +757,15 @@ if __name__ == "__main__":
     os.makedirs(PART_3_OUT, exist_ok=True)
     os.makedirs(PART_4_OUT, exist_ok=True)
     os.makedirs(PART_5_OUT, exist_ok=True)
+    os.makedirs(PART_6_OUT, exist_ok=True)
+
+    # test = utils.read_and_process_raw(f"{PART_6_FOLDER}/same/test.dng")
+    # print(np.max(test))
+    # Close @ 14 for camera, 13 for display
+    # Far @ 69
+    # Middle @ 30
 
     # part_1()
     # part_2()
-    # test = utils.read_and_process_raw(f"{PART_3_FOLDER}/psf_0.dng")
-    # print(np.max(test))
-
-    part_3()
+    # part_3()
+    part_6()
