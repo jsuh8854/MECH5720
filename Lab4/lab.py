@@ -483,6 +483,7 @@ def bonus_joint(psfs, scene_d, tau=BEST_TAU, snapshots=ADMM_SNAPSHOTS):
 def part_1():
     """Part 1"""
 
+<<<<<<< HEAD
     # Show cover close frame
     closed_frame = utils.read_and_process_raw(f"{PART_1_FOLDER}/blank.dng")
     plt.imsave(f"{PART_1_OUT}/blank_norm.png", closed_frame, cmap="gray")
@@ -494,6 +495,18 @@ def part_1():
         ambient = utils.read_and_process_raw(f"{PART_1_FOLDER}/ambient_{file_name}.dng")
 
         psf = utils.read_and_process_raw(f"{PART_1_FOLDER}/{file_name}.dng") - ambient
+=======
+    # Close cap frame
+    
+
+    # PSFs and autocorrelation plot
+    fig, ax = plt.subplots()
+
+    for file_name in ["test"]:
+        psf = Image.open(f"{PART_1_FOLDER}/{file_name}.png")
+        psf = np.asarray(psf)
+        # psf = psf[:,:,1]
+>>>>>>> 336da37 (artsararst)
 
         # Save PSF image
         psf_fig, psf_ax = plt.subplots()
@@ -526,6 +539,7 @@ def part_1():
     fig.savefig(f"{PART_1_OUT}/auto_correlation.png")
     plt.close(fig)
 
+<<<<<<< HEAD
 def part_2():
     """Part 2"""
 
@@ -749,6 +763,8 @@ def part_6():
 
 
 
+=======
+>>>>>>> 336da37 (artsararst)
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     # So it doesn't cry
