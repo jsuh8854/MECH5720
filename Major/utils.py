@@ -23,7 +23,7 @@ BLACK_LEVEL: int = 16
 FIXED_PATTERN_PICKLE_PATH: str = "fixed_pattern.pkl"
 """Path to pickle file with fixed pattern noise"""
 
-fixed_pattern: np.ndarray
+fixed_pattern: np.ndarray = None
 """Fixed pattern of sensor."""
 
 # ========================================
@@ -56,12 +56,18 @@ def read_raw(filename: str) -> np.ndarray:
 
 def debayer_raw(raw: np.ndarray) -> np.ndarray:
     """Convert raw DNG into a float32 debayered RGB image."""
+    # pylint: disable=no-member
     raw = np.asarray(raw, dtype=np.int16, order="C")
     raw = np.clip(raw, 0, np.iinfo(np.uint16).max).astype(np.uint16)
 
-    rgb16 = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB)  # pylint: disable=no-member
+    rgb = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB).astype(np.float32)
 
-    return rgb
+    if np.max(rgb) >= MAX_PIXEL - 8:
+        print("SATURATION!!!")
+        
+    rgb_norm = rgb / MAX_PIXEL
+
+    return rgb_norm
 
 def rotate_image(img: np.ndarray, k: int = -1) -> np.ndarray:
     """Rotate the image, default value of -1 rotates to match lab setup."""
@@ -75,5 +81,5 @@ def process_raw(filename: str) -> np.ndarray:
     if fixed_pattern:
         green -= fixed_pattern
     rotated = rotate_image(green)
-    
+
     return rotated
