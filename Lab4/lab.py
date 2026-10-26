@@ -777,8 +777,8 @@ if __name__ == "__main__":
 
     # test = utils.read_and_process_raw(f"{PART_6_FOLDER}/same/test.dng")
     # print(np.max(test))
-    # Close @ 14 for camera, 13 for display
-    # Far @ 69
+    # Close @ 15 cm
+    # Far @ 60
     # Middle @ 30
 
     # part_1()
