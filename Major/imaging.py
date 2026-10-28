@@ -56,7 +56,7 @@ def perform_tv_l1(
     # Average ambient to reduce noise
     ref = np.mean(ambient_images, axis=0)
     # Optional, test if it actually helps.
-    ref = cv2.GaussianBlur(ref, (0, 0), 1.0)
+    # ref = cv2.GaussianBlur(ref, (0, 0), 1.0)
 
     # Create the solver
     tv_l1 = create_tvl1(tv_l1_settings)
@@ -83,8 +83,6 @@ def perform_tv_l1(
     return results
 
 
-
-
 if __name__ == "__main__":
     os.chdir(sys.path[0])
 
@@ -97,7 +95,7 @@ if __name__ == "__main__":
     heat = [
         utils.process_raw(str(file))
         for file in directory.iterdir()
-        if file.is_file() and file.name.startswith("stripes_heat_")
+        if file.is_file() and file.name.startswith("second_stripes_heat_")
     ]
     tv_settings = TVL1Settings(
         l=0.15,
@@ -109,7 +107,25 @@ if __name__ == "__main__":
         outer_iterations=10
     )
 
-    # images = perform_tv_l1(ambient, [heat[2]], tv_settings)
-    images = perform_tv_l1(ambient, [ambient[2]], tv_settings)
-    plt.imshow(images[0][:,:,0])
+    images = perform_tv_l1(ambient, [heat[1]], tv_settings)
+    ambient_comparison = perform_tv_l1(ambient, [ambient[1]], tv_settings)
+
+    img1 = images[0][:, :, 0]
+    img2 = ambient_comparison[0][:, :, 0]
+
+    # Shared colour scale
+    vmin = min(img1.min(), img2.min())
+    vmax = max(img1.max(), img2.max())
+
+    fig, axes = plt.subplots(1, 2, figsize=(8, 12), constrained_layout=True)
+
+    im1 = axes[0].imshow(img1, cmap="viridis", vmin=vmin, vmax=vmax)
+    axes[0].set_title("Heat")
+    axes[0].axis("off")
+
+    im2 = axes[1].imshow(img2, cmap="viridis", vmin=vmin, vmax=vmax)
+    axes[1].set_title("Ambient Test")
+    axes[1].axis("off")
+
+    fig.colorbar(im1, ax=axes, label="Intensity", location="right", pad=0.04, shrink=0.8)
     plt.show()
