@@ -2,13 +2,11 @@
 General utility functions used for the lab.
 """
 
-import pickle
 import sys
-from pathlib import Path
+import pickle
 import numpy as np
 import cv2
 import rawpy
-import matplotlib.pyplot as plt
 
 # ========================================
 # Module constants and members

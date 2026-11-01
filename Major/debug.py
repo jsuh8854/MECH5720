@@ -19,12 +19,18 @@ def inject_shift(image: np.ndarray, amp_px: float, sigma_px: float = 150.0):
     Returns (shifted_image, true_flow) with true_flow shaped (H, W, 2) = (dx, dy),
     using the convention cur(x) = ref(x - d).
     """
+    # pylint:disable=no-member
     h, w = image.shape
     Y, X = np.mgrid[0:h, 0:w].astype(np.float32)
     g = np.exp(-(((X - w / 2) ** 2 + (Y - h / 2) ** 2) / (2 * sigma_px ** 2))).astype(np.float32)
     flow = np.stack([amp_px * g, -0.5 * amp_px * g], axis=-1)
-    shifted = cv2.remap(image.astype(np.float32), X - flow[..., 0], Y - flow[..., 1],
-                        cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    shifted = cv2.remap(
+        image.astype(np.float32),
+        X - flow[..., 0],
+        Y - flow[..., 1],
+        cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE
+    )
     return shifted, flow
 
 
