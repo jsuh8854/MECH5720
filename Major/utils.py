@@ -61,10 +61,9 @@ def debayer_raw(raw: np.ndarray) -> np.ndarray:
     raw = np.clip(raw, 0, np.iinfo(np.uint16).max).astype(np.uint16)
 
     rgb = cv2.cvtColor(raw, cv2.COLOR_BayerGR2RGB).astype(np.float32)
-
     if np.max(rgb) >= MAX_PIXEL - 8:
         print("SATURATION!!!")
-        
+    # print(np.max(rgb))
     rgb_norm = rgb / MAX_PIXEL
 
     return rgb_norm
@@ -77,9 +76,16 @@ def process_raw(filename: str) -> np.ndarray:
     """Do full pre-processing on raw image from provided file path."""
     raw = read_raw(filename)
     debayer = debayer_raw(raw)
-    green = debayer[:,:,1] - BLACK_LEVEL
-    if fixed_pattern:
-        green -= fixed_pattern
+    green = debayer[:, :, 1]
+    # if fixed_pattern is not None:
+    #     green -= fixed_pattern / MAX_PIXEL
     rotated = rotate_image(green)
 
-    return rotated
+    # Jank crop
+    crop_size = 512
+    h, w = rotated.shape
+    top = (h - crop_size) // 2
+    left = (w - crop_size) // 2
+    cropped = rotated[top:top + crop_size, left:left + crop_size]
+
+    return cropped
